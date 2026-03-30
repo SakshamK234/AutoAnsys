@@ -65,6 +65,7 @@ services:
       S3_SECRET_KEY: minioadmin
       S3_BUCKET: autoansys
       JWT_SECRET: dev-secret-change-in-production
+      CLUSTER_MOCK_MODE: "true"
     depends_on:
       postgres:
         condition: service_healthy
@@ -90,6 +91,7 @@ services:
       S3_SECRET_KEY: minioadmin
       S3_BUCKET: autoansys
       JWT_SECRET: dev-secret-change-in-production
+      CLUSTER_MOCK_MODE: "true"
     depends_on:
       postgres:
         condition: service_healthy

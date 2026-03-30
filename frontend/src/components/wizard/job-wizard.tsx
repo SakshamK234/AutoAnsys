@@ -8,10 +8,36 @@ import { MeshConfigStep } from './mesh-config-step';
 import { SolverConfigStep } from './solver-config-step';
 import { ResourceConfigStep } from './resource-config-step';
 import { ReviewStep } from './review-step';
-import { ArrowLeft, ArrowRight, Check, Send } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Send, AlertCircle, X } from 'lucide-react';
 import type { MeshConfig, SolverConfig, SlurmConfig } from '@/types';
 
 const STEPS = ['Geometry', 'Mesh', 'Solver', 'Resources', 'Review'];
+
+function validateStep0(name: string, geometryId: string): string | null {
+  if (!name.trim()) return 'Simulation name is required.';
+  if (!geometryId) return 'Please select a geometry.';
+  return null;
+}
+
+function validateStep1(config: MeshConfig): string | null {
+  const sm = config.surface_mesh;
+  if (sm.min_size <= 0 || sm.max_size <= 0) return 'Surface mesh sizes must be positive.';
+  if (sm.min_size >= sm.max_size) return 'Min size must be less than max size.';
+  if (sm.growth_rate < 1.0 || sm.growth_rate > 5.0) return 'Growth rate must be between 1.0 and 5.0.';
+  const vm = config.volume_mesh;
+  if (vm.max_cell_length <= 0) return 'Max cell length must be positive.';
+  if (vm.first_layer_height <= 0) return 'First layer height must be positive.';
+  if (vm.num_layers < 1 || vm.num_layers > 50) return 'Number of layers must be between 1 and 50.';
+  return null;
+}
+
+function validateStep3(config: SlurmConfig): string | null {
+  if (config.nodes < 1 || config.nodes > 64) return 'Nodes must be between 1 and 64.';
+  if (config.cores_per_node < 1 || config.cores_per_node > 128) return 'Cores per node must be between 1 and 128.';
+  if (config.memory_gb < 1 || config.memory_gb > 1024) return 'Memory must be between 1 and 1024 GB.';
+  if (config.walltime_hours < 1 || config.walltime_hours > 72) return 'Wall time must be between 1 and 72 hours.';
+  return null;
+}
 
 export function JobWizard() {
   const navigate = useNavigate();
@@ -22,10 +48,37 @@ export function JobWizard() {
   const [solverConfig, setSolverConfig] = useState<SolverConfig>(DEFAULT_SOLVER_CONFIG);
   const [slurmConfig, setSlurmConfig] = useState<SlurmConfig>(DEFAULT_SLURM_CONFIG);
   const [submitting, setSubmitting] = useState(false);
+  const [submitPhase, setSubmitPhase] = useState<'creating' | 'submitting' | null>(null);
+  const [error, setError] = useState('');
+  const [validationError, setValidationError] = useState('');
+
+  const validateCurrentStep = (): boolean => {
+    let err: string | null = null;
+    if (step === 0) err = validateStep0(name, geometryId);
+    else if (step === 1) err = validateStep1(meshConfig);
+    else if (step === 3) err = validateStep3(slurmConfig);
+
+    if (err) {
+      setValidationError(err);
+      return false;
+    }
+    setValidationError('');
+    return true;
+  };
+
+  const handleNext = () => {
+    if (validateCurrentStep()) {
+      setStep(step + 1);
+      setError('');
+    }
+  };
 
   const handleSubmit = async () => {
     setSubmitting(true);
+    setError('');
+
     try {
+      setSubmitPhase('creating');
       const res = await api.post('/jobs', {
         name,
         geometry_id: geometryId,
@@ -33,12 +86,26 @@ export function JobWizard() {
         solver_config: solverConfig,
         slurm_config: slurmConfig,
       });
-      navigate(`/jobs/${res.data.id}`);
-    } catch (err) {
-      console.error('Failed to submit job:', err);
+
+      const jobId = res.data.id;
+
+      setSubmitPhase('submitting');
+      await api.post(`/jobs/${jobId}/submit`);
+
+      navigate(`/jobs/${jobId}`);
+    } catch (err: any) {
+      const detail = err.response?.data?.detail || 'Submission failed. Please try again.';
+      setError(detail);
       setSubmitting(false);
+      setSubmitPhase(null);
     }
   };
+
+  const submitLabel = submitPhase === 'creating'
+    ? 'Creating job...'
+    : submitPhase === 'submitting'
+    ? 'Submitting to cluster...'
+    : 'Submit Simulation';
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -82,6 +149,25 @@ export function JobWizard() {
         </div>
       </div>
 
+      {/* Error banner */}
+      {error && (
+        <div className="mb-4 flex items-start gap-3 rounded-lg border border-rose-500/20 bg-rose-500/10 p-4">
+          <AlertCircle className="h-4 w-4 shrink-0 text-rose-500 mt-0.5" />
+          <div className="flex-1 text-sm text-rose-500">{error}</div>
+          <button onClick={() => setError('')} className="shrink-0 text-rose-500/60 hover:text-rose-500">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Validation error */}
+      {validationError && (
+        <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-600 dark:text-amber-400">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          {validationError}
+        </div>
+      )}
+
       {/* Step content */}
       <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6 animate-fade-in">
         {step === 0 && <GeometryStep name={name} setName={setName} geometryId={geometryId} setGeometryId={setGeometryId} />}
@@ -94,7 +180,7 @@ export function JobWizard() {
       {/* Navigation */}
       <div className="mt-6 flex justify-between">
         <button
-          onClick={() => setStep(Math.max(0, step - 1))}
+          onClick={() => { setStep(Math.max(0, step - 1)); setValidationError(''); }}
           disabled={step === 0}
           className="flex items-center gap-2 rounded-lg border border-[hsl(var(--border))] px-4 py-2.5 text-sm font-medium disabled:opacity-30 hover:bg-[hsl(var(--accent))] transition-colors"
         >
@@ -103,7 +189,7 @@ export function JobWizard() {
         </button>
         {step < STEPS.length - 1 ? (
           <button
-            onClick={() => setStep(step + 1)}
+            onClick={handleNext}
             className="flex items-center gap-2 rounded-lg bg-[hsl(var(--primary))] px-5 py-2.5 text-sm font-semibold text-[hsl(var(--primary-foreground))] hover:brightness-110 active:brightness-95 transition-all"
           >
             Next
@@ -115,8 +201,17 @@ export function JobWizard() {
             disabled={submitting}
             className="flex items-center gap-2 rounded-lg bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50 transition-colors"
           >
-            <Send className="h-3.5 w-3.5" />
-            {submitting ? 'Submitting...' : 'Submit Simulation'}
+            {submitting ? (
+              <>
+                <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                {submitLabel}
+              </>
+            ) : (
+              <>
+                <Send className="h-3.5 w-3.5" />
+                {submitLabel}
+              </>
+            )}
           </button>
         )}
       </div>

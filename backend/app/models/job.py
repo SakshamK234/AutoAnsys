@@ -54,3 +54,6 @@ class Job(Base):
     # Relationships
     owner: Mapped["User"] = relationship(back_populates="jobs")  # noqa: F821
     geometry: Mapped["Geometry"] = relationship(back_populates="jobs")  # noqa: F821
+    result_files: Mapped[list["ResultFile"]] = relationship(  # noqa: F821
+        back_populates="job", cascade="all, delete-orphan"
+    )

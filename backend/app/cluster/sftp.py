@@ -41,7 +41,8 @@ class SFTPManager:
     def read_file(self, remote_path: str) -> str:
         """Read a remote file and return its contents as a string."""
         with self.sftp.open(remote_path, "r") as f:
-            return f.read().decode() if isinstance(f.read(), bytes) else f.read()
+            data = f.read()
+            return data.decode() if isinstance(data, bytes) else data
 
     def list_dir(self, remote_path: str) -> list[dict]:
         """List files in a remote directory with metadata."""

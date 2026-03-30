@@ -40,3 +40,15 @@ export function useDeleteGeometry() {
     },
   });
 }
+
+export function useDownloadGeometry() {
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await api.get<{ url: string; filename: string }>(`/geometries/${id}/download`);
+      return res.data;
+    },
+    onSuccess: (data) => {
+      window.open(data.url, '_blank');
+    },
+  });
+}

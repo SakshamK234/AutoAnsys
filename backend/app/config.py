@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     CLUSTER_USER: str = "cfd"
     CLUSTER_KEY_PATH: str = "~/.ssh/id_rsa"
     CLUSTER_WORKSPACE_BASE: str = "/scratch/cfd/jobs"
+    CLUSTER_MOCK_MODE: bool = True
 
     # ── ANSYS / Fluent ────────────────────────────────────────────────────
     FLUENT_MODULE: str = "ansys/2024r2"

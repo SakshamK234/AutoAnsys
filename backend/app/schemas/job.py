@@ -200,3 +200,15 @@ class ResidualData(BaseModel):
     z_velocity: float
     k: float
     omega: float
+
+
+class ResultFileResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    job_id: uuid.UUID
+    filename: str
+    file_type: str
+    s3_key: str
+    file_size: int
+    created_at: datetime
