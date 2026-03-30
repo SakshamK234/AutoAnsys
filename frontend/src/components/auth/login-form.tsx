@@ -12,6 +12,7 @@ export function LoginForm() {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [guestLoading, setGuestLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,7 +26,6 @@ export function LoginForm() {
       const res = await api.post('/auth/login', { email, password });
       const { access_token } = res.data;
 
-      // Store token, then fetch user
       localStorage.setItem('token', access_token);
       const userRes = await api.get('/auth/me');
       setAuth(userRes.data, access_token);
@@ -36,6 +36,27 @@ export function LoginForm() {
       setLoading(false);
     }
   };
+
+  const handleGuestLogin = async () => {
+    setError('');
+    setGuestLoading(true);
+
+    try {
+      const res = await api.post('/auth/guest');
+      const { access_token } = res.data;
+
+      localStorage.setItem('token', access_token);
+      const userRes = await api.get('/auth/me');
+      setAuth(userRes.data, access_token);
+      navigate('/');
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Guest login failed');
+    } finally {
+      setGuestLoading(false);
+    }
+  };
+
+  const anyLoading = loading || guestLoading;
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 w-full max-w-sm">
@@ -67,10 +88,28 @@ export function LoginForm() {
 
       <button
         type="submit"
-        disabled={loading}
+        disabled={anyLoading}
         className="w-full rounded-md bg-[hsl(var(--primary))] py-2 text-sm font-medium text-[hsl(var(--primary-foreground))] hover:opacity-90 disabled:opacity-50"
       >
         {loading ? 'Please wait...' : isRegister ? 'Create Account' : 'Sign In'}
+      </button>
+
+      <div className="relative">
+        <div className="absolute inset-0 flex items-center">
+          <span className="w-full border-t border-[hsl(var(--border))]" />
+        </div>
+        <div className="relative flex justify-center text-xs uppercase">
+          <span className="bg-[hsl(var(--background))] px-2 text-[hsl(var(--muted-foreground))]">or</span>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={handleGuestLogin}
+        disabled={anyLoading}
+        className="w-full rounded-md border border-[hsl(var(--input))] py-2 text-sm font-medium hover:bg-[hsl(var(--accent))] disabled:opacity-50"
+      >
+        {guestLoading ? 'Please wait...' : 'Continue as Guest'}
       </button>
 
       <button

@@ -1,6 +1,6 @@
 // ── User ──────────────────────────────────────────────────────────────────────
 
-export type UserRole = 'member' | 'aero_lead' | 'admin';
+export type UserRole = 'guest' | 'member' | 'aero_lead' | 'admin';
 
 export interface User {
   id: string;
