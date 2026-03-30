@@ -4,6 +4,9 @@ import enum
 import uuid
 from datetime import datetime, timezone
 
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
 from sqlalchemy import String, Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -33,7 +36,7 @@ class User(Base):
         nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(
-        default=lambda: datetime.now(timezone.utc), nullable=False
+        default=_utcnow, nullable=False
     )
 
     # Relationships

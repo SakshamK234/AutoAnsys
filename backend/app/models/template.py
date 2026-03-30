@@ -3,6 +3,8 @@
 import uuid
 from datetime import datetime, timezone
 
+from app.models.user import _utcnow
+
 from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -26,7 +28,7 @@ class SimulationTemplate(Base):
     is_recommended: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        default=lambda: datetime.now(timezone.utc), nullable=False
+        default=_utcnow, nullable=False
     )
 
     # Relationships

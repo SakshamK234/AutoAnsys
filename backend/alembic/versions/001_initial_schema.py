@@ -17,14 +17,14 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # User role enum
-    user_role = postgresql.ENUM("member", "aero_lead", "admin", name="user_role", create_type=True)
+    # User role enum — create_type=False so create_table won't duplicate the CREATE TYPE
+    user_role = postgresql.ENUM("member", "aero_lead", "admin", name="user_role", create_type=False)
     user_role.create(op.get_bind(), checkfirst=True)
 
     # Job status enum
     job_status = postgresql.ENUM(
         "draft", "queued", "running", "completed", "failed", "cancelled",
-        name="job_status", create_type=True,
+        name="job_status", create_type=False,
     )
     job_status.create(op.get_bind(), checkfirst=True)
 

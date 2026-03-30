@@ -74,6 +74,8 @@ services:
         condition: service_started
     volumes:
       - ./backend/app:/app/app
+      - ./backend/alembic:/app/alembic
+      - ./backend/entrypoint.sh:/app/entrypoint.sh
 
   celery-worker:
     build:
@@ -112,10 +114,13 @@ services:
       dockerfile: Dockerfile
     ports:
       - "3000:3000"
+    environment:
+      VITE_API_TARGET: http://backend:8000
     depends_on:
       - backend
     volumes:
       - ./frontend/src:/app/src
+      - ./frontend/vite.config.ts:/app/vite.config.ts
 
 volumes:
   postgres_data:
