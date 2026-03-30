@@ -38,9 +38,9 @@ export function ForceChart({ data }: ForceChartProps) {
             }}
           />
           <Legend />
-          <Line type="monotone" dataKey="cd" name="Cd" stroke="#ef4444" dot={false} strokeWidth={2} />
-          <Line type="monotone" dataKey="cl" name="Cl" stroke="#3b82f6" dot={false} strokeWidth={2} />
-          <Line type="monotone" dataKey="cm" name="Cm" stroke="#10b981" dot={false} strokeWidth={2} />
+          <Line type="monotone" dataKey="cd" name="Cd" stroke="#f97316" dot={false} strokeWidth={2} />
+          <Line type="monotone" dataKey="cl" name="Cl" stroke="#06b6d4" dot={false} strokeWidth={2} />
+          <Line type="monotone" dataKey="cm" name="Cm" stroke="#22c55e" dot={false} strokeWidth={2} />
         </LineChart>
       </ResponsiveContainer>
     </div>

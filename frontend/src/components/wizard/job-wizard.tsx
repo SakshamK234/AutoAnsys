@@ -8,6 +8,7 @@ import { MeshConfigStep } from './mesh-config-step';
 import { SolverConfigStep } from './solver-config-step';
 import { ResourceConfigStep } from './resource-config-step';
 import { ReviewStep } from './review-step';
+import { ArrowLeft, ArrowRight, Check, Send } from 'lucide-react';
 import type { MeshConfig, SolverConfig, SlurmConfig } from '@/types';
 
 const STEPS = ['Geometry', 'Mesh', 'Solver', 'Resources', 'Review'];
@@ -42,34 +43,47 @@ export function JobWizard() {
   return (
     <div className="mx-auto max-w-4xl">
       {/* Step indicator */}
-      <div className="mb-8 flex items-center justify-between">
-        {STEPS.map((s, i) => (
-          <div key={s} className="flex items-center">
-            <button
-              onClick={() => i < step && setStep(i)}
-              className={cn(
-                'flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium transition-colors',
-                i === step
-                  ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]'
-                  : i < step
-                  ? 'bg-green-500 text-white'
-                  : 'bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]'
+      <div className="mb-8">
+        <div className="flex items-center gap-1">
+          {STEPS.map((s, i) => (
+            <div key={s} className="flex items-center flex-1 last:flex-initial">
+              <button
+                onClick={() => i < step && setStep(i)}
+                disabled={i > step}
+                className="flex items-center gap-2 group"
+              >
+                <div
+                  className={cn(
+                    'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-semibold transition-all',
+                    i === step
+                      ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-md shadow-[hsl(var(--primary)/0.3)]'
+                      : i < step
+                      ? 'bg-emerald-500/15 text-emerald-500'
+                      : 'bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]'
+                  )}
+                >
+                  {i < step ? <Check className="h-3.5 w-3.5" /> : i + 1}
+                </div>
+                <span className={cn(
+                  'text-xs font-medium hidden sm:block whitespace-nowrap',
+                  i === step ? 'text-[hsl(var(--foreground))]' : 'text-[hsl(var(--muted-foreground))]'
+                )}>
+                  {s}
+                </span>
+              </button>
+              {i < STEPS.length - 1 && (
+                <div className={cn(
+                  'h-px flex-1 mx-3',
+                  i < step ? 'bg-emerald-500/30' : 'bg-[hsl(var(--border))]'
+                )} />
               )}
-            >
-              {i < step ? '\u2713' : i + 1}
-            </button>
-            <span className={cn('ml-2 text-sm font-medium', i === step ? 'text-foreground' : 'text-[hsl(var(--muted-foreground))]')}>
-              {s}
-            </span>
-            {i < STEPS.length - 1 && (
-              <div className={cn('mx-4 h-px w-12', i < step ? 'bg-green-500' : 'bg-[hsl(var(--border))]')} />
-            )}
-          </div>
-        ))}
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Step content */}
-      <div className="rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6">
+      <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6 animate-fade-in">
         {step === 0 && <GeometryStep name={name} setName={setName} geometryId={geometryId} setGeometryId={setGeometryId} />}
         {step === 1 && <MeshConfigStep config={meshConfig} setConfig={setMeshConfig} />}
         {step === 2 && <SolverConfigStep config={solverConfig} setConfig={setSolverConfig} />}
@@ -82,23 +96,26 @@ export function JobWizard() {
         <button
           onClick={() => setStep(Math.max(0, step - 1))}
           disabled={step === 0}
-          className="rounded-md border border-[hsl(var(--border))] px-4 py-2 text-sm font-medium disabled:opacity-50 hover:bg-[hsl(var(--accent))]"
+          className="flex items-center gap-2 rounded-lg border border-[hsl(var(--border))] px-4 py-2.5 text-sm font-medium disabled:opacity-30 hover:bg-[hsl(var(--accent))] transition-colors"
         >
+          <ArrowLeft className="h-3.5 w-3.5" />
           Back
         </button>
         {step < STEPS.length - 1 ? (
           <button
             onClick={() => setStep(step + 1)}
-            className="rounded-md bg-[hsl(var(--primary))] px-4 py-2 text-sm font-medium text-[hsl(var(--primary-foreground))] hover:opacity-90"
+            className="flex items-center gap-2 rounded-lg bg-[hsl(var(--primary))] px-5 py-2.5 text-sm font-semibold text-[hsl(var(--primary-foreground))] hover:brightness-110 active:brightness-95 transition-all"
           >
             Next
+            <ArrowRight className="h-3.5 w-3.5" />
           </button>
         ) : (
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className="rounded-md bg-green-600 px-6 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+            className="flex items-center gap-2 rounded-lg bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50 transition-colors"
           >
+            <Send className="h-3.5 w-3.5" />
             {submitting ? 'Submitting...' : 'Submit Simulation'}
           </button>
         )}

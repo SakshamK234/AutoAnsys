@@ -11,12 +11,12 @@ import {
 import type { ResidualData } from '@/types';
 
 const COLORS = {
-  continuity: '#ef4444',
-  x_velocity: '#3b82f6',
-  y_velocity: '#10b981',
-  z_velocity: '#f59e0b',
-  k: '#8b5cf6',
-  omega: '#ec4899',
+  continuity: '#f97316',
+  x_velocity: '#06b6d4',
+  y_velocity: '#22c55e',
+  z_velocity: '#eab308',
+  k: '#a78bfa',
+  omega: '#fb7185',
 };
 
 interface ResidualChartProps {

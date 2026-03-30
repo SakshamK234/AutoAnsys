@@ -22,7 +22,11 @@ function AppInit({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     hydrate();
     const saved = localStorage.getItem('theme');
-    if (saved === 'dark') document.documentElement.classList.add('dark');
+    if (saved === 'light') {
+      document.documentElement.classList.remove('dark');
+    } else {
+      document.documentElement.classList.add('dark');
+    }
   }, [hydrate]);
   return <>{children}</>;
 }
