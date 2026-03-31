@@ -3,8 +3,6 @@
 import csv
 import io
 import logging
-import os
-import tempfile
 import uuid
 from datetime import datetime, timezone
 
@@ -30,20 +28,6 @@ def _get_s3_client():
         aws_access_key_id=settings.S3_ACCESS_KEY,
         aws_secret_access_key=settings.S3_SECRET_KEY,
     )
-
-
-def _get_cluster_managers():
-    """Return SSH and SLURM manager instances based on mock mode."""
-    if settings.CLUSTER_MOCK_MODE:
-        from app.cluster.mock import MockSSHManager, MockSlurmManager
-        ssh = MockSSHManager()
-        return ssh, MockSlurmManager(ssh)
-    else:
-        from app.cluster.ssh_manager import SSHManager
-        from app.cluster.slurm import SlurmManager
-        ssh = SSHManager()
-        ssh.connect()
-        return ssh, SlurmManager(ssh)
 
 
 class JobService:
@@ -99,17 +83,10 @@ class JobService:
     # ── Submit ────────────────────────────────────────────────────────────
 
     async def submit_job(self, user: User, job_id: uuid.UUID) -> Job:
-        """Submit a draft job to the HPC cluster.
+        """Validate a draft job and enqueue it for async cluster submission.
 
-        Full flow:
-        1. Load job, verify ownership and draft status.
-        2. Download geometry from S3.
-        3. Generate Fluent journal files (mesh, solver) from config.
-        4. Generate SLURM batch script.
-        5. Create workspace directory on cluster via SSH.
-        6. Upload geometry, journals, and SLURM script via SFTP.
-        7. Execute sbatch to submit the job.
-        8. Update job record with slurm_job_id, status, timestamps.
+        The heavy lifting (S3 download, journal generation, SFTP upload,
+        sbatch) runs in a Celery worker so the API returns immediately.
         """
         job = await self._get_user_job(user, job_id)
 
@@ -122,87 +99,22 @@ class JobService:
         geom_result = await self.db.execute(
             select(Geometry).where(Geometry.id == job.geometry_id)
         )
-        geometry = geom_result.scalar_one_or_none()
-        if geometry is None:
+        if geom_result.scalar_one_or_none() is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Associated geometry no longer exists",
             )
 
-        workspace = f"{settings.CLUSTER_WORKSPACE_BASE}/{job.id}"
-        job.cluster_workspace = workspace
-        geom_filename = sanitize_path(geometry.original_name) or "geometry.stp"
+        job.status = JobStatus.queued
+        job.submitted_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        await self.db.flush()
+        await self.db.refresh(job)
 
-        tmpdir = None
-        ssh = None
-        try:
-            # 1. Download geometry from S3 to a temp file
-            tmpdir = tempfile.mkdtemp(prefix="autoansys_")
-            local_geom_path = os.path.join(tmpdir, geom_filename)
+        from app.tasks.job_tasks import submit_job_to_cluster
+        submit_job_to_cluster.delay(str(job.id))
 
-            s3 = _get_s3_client()
-            s3.download_file(settings.S3_BUCKET, geometry.s3_key, local_geom_path)
-
-            # 2. Generate journal files
-            from app.journal.generator import JournalGenerator
-            gen = JournalGenerator()
-
-            mesh_jou = gen.generate_mesh_journal(
-                job.config["mesh"],
-                geometry_file=f"{workspace}/{geom_filename}",
-                output_case=f"{workspace}/result.cas.h5",
-            )
-            solver_jou = gen.generate_solver_journal(
-                job.config["solver"],
-                case_file=f"{workspace}/result.cas.h5",
-                workspace=workspace,
-            )
-            slurm_sh = gen.generate_slurm_script(
-                job.config["slurm"],
-                workspace=workspace,
-                fluent_module=settings.FLUENT_MODULE,
-            )
-
-            # 3. Connect to cluster
-            ssh, slurm_mgr = _get_cluster_managers()
-
-            # 4. Create workspace and upload files
-            from app.cluster.sftp import SFTPManager
-            sftp_client = ssh.open_sftp()
-            sftp = SFTPManager(sftp_client)
-
-            sftp.upload_file(local_geom_path, f"{workspace}/{geom_filename}")
-            sftp.upload_string(mesh_jou, f"{workspace}/mesh_watertight.jou")
-            sftp.upload_string(solver_jou, f"{workspace}/solver.jou")
-            sftp.upload_string(slurm_sh, f"{workspace}/run.sh")
-            sftp.close()
-
-            # 5. Submit via sbatch
-            slurm_job_id = slurm_mgr.submit_job(f"{workspace}/run.sh")
-            job.slurm_job_id = slurm_job_id
-
-            job.status = JobStatus.queued
-            job.submitted_at = datetime.now(timezone.utc).replace(tzinfo=None)
-            await self.db.flush()
-            await self.db.refresh(job)
-
-            logger.info("Job %s submitted with SLURM ID %s", job.id, slurm_job_id)
-            return job
-
-        except HTTPException:
-            raise
-        except Exception as exc:
-            logger.exception("Failed to submit job %s", job_id)
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Job submission failed: {exc}",
-            )
-        finally:
-            if ssh and not settings.CLUSTER_MOCK_MODE:
-                ssh.close()
-            if tmpdir:
-                import shutil
-                shutil.rmtree(tmpdir, ignore_errors=True)
+        logger.info("Job %s enqueued for async cluster submission", job.id)
+        return job
 
     # ── Cancel ────────────────────────────────────────────────────────────
 
@@ -219,7 +131,16 @@ class JobService:
         if job.slurm_job_id:
             ssh = None
             try:
-                ssh, slurm_mgr = _get_cluster_managers()
+                if settings.CLUSTER_MOCK_MODE:
+                    from app.cluster.mock import MockSSHManager, MockSlurmManager
+                    ssh = MockSSHManager()
+                    slurm_mgr = MockSlurmManager(ssh)
+                else:
+                    from app.cluster.ssh_manager import SSHManager
+                    from app.cluster.slurm import SlurmManager
+                    ssh = SSHManager()
+                    ssh.connect()
+                    slurm_mgr = SlurmManager(ssh)
                 slurm_mgr.cancel_job(job.slurm_job_id)
             except Exception:
                 logger.warning("Failed to cancel SLURM job %s on cluster", job.slurm_job_id)

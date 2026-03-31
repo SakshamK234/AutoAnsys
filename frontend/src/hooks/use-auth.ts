@@ -11,13 +11,14 @@ export function useLogin() {
   return useMutation({
     mutationFn: async (data: LoginRequest) => {
       const res = await api.post<TokenResponse>('/auth/login', data);
-      const { access_token } = res.data;
+      const { access_token, refresh_token } = res.data;
       localStorage.setItem('token', access_token);
+      localStorage.setItem('refresh_token', refresh_token);
       const userRes = await api.get<User>('/auth/me');
-      return { user: userRes.data, access_token };
+      return { user: userRes.data, access_token, refresh_token };
     },
-    onSuccess: ({ user, access_token }) => {
-      setAuth(user, access_token);
+    onSuccess: ({ user, access_token, refresh_token }) => {
+      setAuth(user, access_token, refresh_token);
       navigate('/');
     },
   });
@@ -34,13 +35,14 @@ export function useRegister() {
         email: data.email,
         password: data.password,
       });
-      const { access_token } = res.data;
+      const { access_token, refresh_token } = res.data;
       localStorage.setItem('token', access_token);
+      localStorage.setItem('refresh_token', refresh_token);
       const userRes = await api.get<User>('/auth/me');
-      return { user: userRes.data, access_token };
+      return { user: userRes.data, access_token, refresh_token };
     },
-    onSuccess: ({ user, access_token }) => {
-      setAuth(user, access_token);
+    onSuccess: ({ user, access_token, refresh_token }) => {
+      setAuth(user, access_token, refresh_token);
       navigate('/');
     },
   });

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import logging
 import math
 import os
@@ -13,6 +14,7 @@ import uuid
 from datetime import datetime, timezone
 
 import boto3
+import redis as sync_redis
 
 from app.config import settings
 from app.database import SyncSessionLocal
@@ -62,13 +64,25 @@ def _get_cluster_managers():
         return ssh, SlurmManager(ssh)
 
 
+def _publish_job_event(job_id: str, event_type: str, data: dict) -> None:
+    """Publish a real-time event to the job's Redis pub/sub channel."""
+    try:
+        r = sync_redis.from_url(settings.REDIS_URL)
+        r.publish(
+            f"job:{job_id}:events",
+            json.dumps({"type": event_type, "data": data}),
+        )
+        r.close()
+    except Exception:
+        logger.debug("Failed to publish event for job %s", job_id)
+
+
 @celery_app.task(name="app.tasks.job_tasks.submit_job_to_cluster", bind=True, max_retries=2)
 def submit_job_to_cluster(self, job_id: str) -> dict:
-    """Submit a job to the HPC cluster (background Celery task).
+    """Submit a queued job to the HPC cluster (background Celery task).
 
     Performs the full pipeline: S3 download → journal gen → SFTP → sbatch.
-    This is an alternative to the synchronous submission in JobService.submit_job()
-    for cases where we want to return immediately and run submission in background.
+    Called asynchronously after JobService.submit_job() marks the job as queued.
     """
     logger.info("Submitting job %s to cluster (Celery task)", job_id)
 
@@ -79,13 +93,14 @@ def submit_job_to_cluster(self, job_id: str) -> dict:
         if not job:
             return {"job_id": job_id, "error": "Job not found"}
 
-        if job.status != JobStatus.draft:
-            return {"job_id": job_id, "error": f"Job is in '{job.status.value}' state, expected draft"}
+        if job.status != JobStatus.queued:
+            return {"job_id": job_id, "error": f"Job is in '{job.status.value}' state, expected queued"}
 
         geometry = db.query(Geometry).filter(Geometry.id == job.geometry_id).first()
         if not geometry:
             job.status = JobStatus.failed
             db.commit()
+            _publish_job_event(job_id, "status_update", {"status": "failed"})
             return {"job_id": job_id, "error": "Geometry not found"}
 
         workspace = f"{settings.CLUSTER_WORKSPACE_BASE}/{job.id}"
@@ -97,13 +112,11 @@ def submit_job_to_cluster(self, job_id: str) -> dict:
         ssh = None
         tmpdir = None
         try:
-            # 1. Download geometry from S3
             tmpdir = tempfile.mkdtemp(prefix="autoansys_")
             local_geom_path = os.path.join(tmpdir, geom_filename)
             s3 = _get_s3_client()
             s3.download_file(settings.S3_BUCKET, geometry.s3_key, local_geom_path)
 
-            # 2. Generate journal files
             from app.journal.generator import JournalGenerator
             gen = JournalGenerator()
 
@@ -123,7 +136,6 @@ def submit_job_to_cluster(self, job_id: str) -> dict:
                 fluent_module=settings.FLUENT_MODULE,
             )
 
-            # 3. Connect to cluster and upload
             ssh, slurm_mgr = _get_cluster_managers()
 
             from app.cluster.sftp import SFTPManager
@@ -136,12 +148,14 @@ def submit_job_to_cluster(self, job_id: str) -> dict:
             sftp.upload_string(slurm_sh, f"{workspace}/run.sh")
             sftp.close()
 
-            # 4. Submit via sbatch
             slurm_job_id = slurm_mgr.submit_job(f"{workspace}/run.sh")
             job.slurm_job_id = slurm_job_id
-            job.status = JobStatus.queued
-            job.submitted_at = _utcnow_naive()
             db.commit()
+
+            _publish_job_event(job_id, "status_update", {
+                "status": "queued",
+                "slurm_job_id": slurm_job_id,
+            })
 
             logger.info("Job %s submitted with SLURM ID %s", job.id, slurm_job_id)
             return {"job_id": job_id, "slurm_job_id": slurm_job_id, "status": "queued"}
@@ -149,7 +163,9 @@ def submit_job_to_cluster(self, job_id: str) -> dict:
         except Exception as exc:
             logger.exception("Failed to submit job %s", job_id)
             job.status = JobStatus.failed
+            job.completed_at = _utcnow_naive()
             db.commit()
+            _publish_job_event(job_id, "status_update", {"status": "failed"})
             return {"job_id": job_id, "error": str(exc)}
         finally:
             if ssh and not settings.CLUSTER_MOCK_MODE:
@@ -196,12 +212,16 @@ def poll_active_jobs() -> dict:
 
                     if new_status != job.status:
                         job.status = new_status
+                        event_data: dict = {"status": new_status.value}
                         if new_status == JobStatus.running and job.started_at is None:
                             job.started_at = _utcnow_naive()
+                            event_data["started_at"] = job.started_at.isoformat()
                         if new_status in (JobStatus.completed, JobStatus.failed, JobStatus.cancelled):
                             job.completed_at = _utcnow_naive()
+                            event_data["completed_at"] = job.completed_at.isoformat()
                             if new_status == JobStatus.completed:
                                 download_results.delay(str(job.id))
+                        _publish_job_event(str(job.id), "status_update", event_data)
                         updated += 1
                 except Exception:
                     logger.exception("Error polling job %s", job.id)
@@ -234,6 +254,7 @@ def download_results(job_id: str) -> dict:
             files_downloaded = _download_real_results(db, job, s3)
 
         db.commit()
+        _publish_job_event(job_id, "results_ready", {"files_downloaded": files_downloaded})
         return {"job_id": job_id, "files_downloaded": files_downloaded}
 
 

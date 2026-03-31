@@ -25,11 +25,12 @@ export function LoginForm() {
         await api.post('/auth/register', { email, password, name });
       }
       const res = await api.post('/auth/login', { email, password });
-      const { access_token } = res.data;
+      const { access_token, refresh_token } = res.data;
 
       localStorage.setItem('token', access_token);
+      localStorage.setItem('refresh_token', refresh_token);
       const userRes = await api.get('/auth/me');
-      setAuth(userRes.data, access_token);
+      setAuth(userRes.data, access_token, refresh_token);
       navigate('/');
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Authentication failed');
@@ -44,11 +45,12 @@ export function LoginForm() {
 
     try {
       const res = await api.post('/auth/guest');
-      const { access_token } = res.data;
+      const { access_token, refresh_token } = res.data;
 
       localStorage.setItem('token', access_token);
+      localStorage.setItem('refresh_token', refresh_token);
       const userRes = await api.get('/auth/me');
-      setAuth(userRes.data, access_token);
+      setAuth(userRes.data, access_token, refresh_token);
       navigate('/');
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Guest login failed');

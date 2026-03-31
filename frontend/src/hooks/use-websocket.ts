@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import type { ResidualData, ForceReport } from '@/types';
 
 interface LiveData {
+  status: string | null;
   residuals: ResidualData[];
   forces: ForceReport[];
   connected: boolean;
@@ -11,6 +12,7 @@ interface LiveData {
 export function useWebSocket(jobId: string | undefined) {
   const wsRef = useRef<WebSocket | null>(null);
   const [data, setData] = useState<LiveData>({
+    status: null,
     residuals: [],
     forces: [],
     connected: false,
@@ -20,8 +22,9 @@ export function useWebSocket(jobId: string | undefined) {
   const connect = useCallback(() => {
     if (!jobId) return;
 
+    const token = localStorage.getItem('token') || '';
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/jobs/${jobId}/live`;
+    const wsUrl = `${protocol}//${window.location.host}/ws/jobs/${jobId}/live?token=${encodeURIComponent(token)}`;
 
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
@@ -33,7 +36,9 @@ export function useWebSocket(jobId: string | undefined) {
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
-        if (msg.type === 'residual') {
+        if (msg.type === 'status_update') {
+          setData((prev) => ({ ...prev, status: msg.data?.status ?? prev.status }));
+        } else if (msg.type === 'residual') {
           setData((prev) => ({
             ...prev,
             residuals: [...prev.residuals, msg.data as ResidualData],
@@ -43,6 +48,8 @@ export function useWebSocket(jobId: string | undefined) {
             ...prev,
             forces: [...prev.forces, msg.data as ForceReport],
           }));
+        } else if (msg.type === 'results_ready') {
+          setData((prev) => ({ ...prev, status: 'completed' }));
         }
       } catch {
         // ignore parse errors
@@ -66,8 +73,8 @@ export function useWebSocket(jobId: string | undefined) {
   }, [connect]);
 
   const reset = useCallback(() => {
-    setData({ residuals: [], forces: [], connected: data.connected, error: null });
-  }, [data.connected]);
+    setData((prev) => ({ ...prev, residuals: [], forces: [], error: null }));
+  }, []);
 
   return { ...data, reset };
 }

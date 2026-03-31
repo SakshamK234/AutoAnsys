@@ -12,6 +12,7 @@ from app.api.jobs import router as jobs_router
 from app.api.templates import router as templates_router
 from app.api.files import router as files_router
 from app.api.cluster import router as cluster_router
+from app.api.websocket import router as ws_router
 
 
 @asynccontextmanager
@@ -45,6 +46,7 @@ app.include_router(jobs_router)
 app.include_router(templates_router)
 app.include_router(files_router)
 app.include_router(cluster_router)
+app.include_router(ws_router)
 
 
 @app.get("/api/health", tags=["health"])
