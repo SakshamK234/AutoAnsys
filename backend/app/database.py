@@ -2,13 +2,12 @@
 
 from collections.abc import AsyncGenerator
 
-from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.orm import DeclarativeBase
 
 from app.config import settings
 
@@ -19,10 +18,27 @@ async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit
 
 
 # ── Sync (Celery tasks) ──────────────────────────────────────────────────
-_sync_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2")
-sync_engine = create_engine(_sync_url, echo=False, future=True)
+# Lazy-initialised so that psycopg2 is only imported inside the Celery worker,
+# not in the FastAPI backend container where it may not be installed.
+_sync_engine = None
+_sync_session_factory = None
 
-SyncSessionLocal = sessionmaker(bind=sync_engine, expire_on_commit=False)
+
+def _init_sync():
+    global _sync_engine, _sync_session_factory
+    if _sync_engine is None:
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        _sync_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2")
+        _sync_engine = create_engine(_sync_url, echo=False, future=True)
+        _sync_session_factory = sessionmaker(bind=_sync_engine, expire_on_commit=False)
+
+
+def SyncSessionLocal():
+    """Return a new synchronous DB session (initialises engine on first call)."""
+    _init_sync()
+    return _sync_session_factory()
 
 
 class Base(DeclarativeBase):

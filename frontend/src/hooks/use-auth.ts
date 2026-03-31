@@ -2,7 +2,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { useAuthStore } from '@/stores/auth-store';
-import type { AuthResponse, LoginRequest, RegisterRequest } from '@/types';
+import type { User, TokenResponse, LoginRequest, RegisterRequest } from '@/types';
 
 export function useLogin() {
   const setAuth = useAuthStore((s) => s.setAuth);
@@ -10,11 +10,14 @@ export function useLogin() {
 
   return useMutation({
     mutationFn: async (data: LoginRequest) => {
-      const res = await api.post<AuthResponse>('/auth/login', data);
-      return res.data;
+      const res = await api.post<TokenResponse>('/auth/login', data);
+      const { access_token } = res.data;
+      localStorage.setItem('token', access_token);
+      const userRes = await api.get<User>('/auth/me');
+      return { user: userRes.data, access_token };
     },
-    onSuccess: (data) => {
-      setAuth(data.user, data.access_token);
+    onSuccess: ({ user, access_token }) => {
+      setAuth(user, access_token);
       navigate('/');
     },
   });
@@ -26,11 +29,18 @@ export function useRegister() {
 
   return useMutation({
     mutationFn: async (data: RegisterRequest) => {
-      const res = await api.post<AuthResponse>('/auth/register', data);
-      return res.data;
+      await api.post('/auth/register', data);
+      const res = await api.post<TokenResponse>('/auth/login', {
+        email: data.email,
+        password: data.password,
+      });
+      const { access_token } = res.data;
+      localStorage.setItem('token', access_token);
+      const userRes = await api.get<User>('/auth/me');
+      return { user: userRes.data, access_token };
     },
-    onSuccess: (data) => {
-      setAuth(data.user, data.access_token);
+    onSuccess: ({ user, access_token }) => {
+      setAuth(user, access_token);
       navigate('/');
     },
   });

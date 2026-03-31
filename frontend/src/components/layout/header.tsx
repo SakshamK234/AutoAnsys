@@ -1,7 +1,7 @@
 import { Moon, Sun, LogOut, Search, User } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
-import { useLocation } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -14,12 +14,23 @@ const PAGE_TITLES: Record<string, string> = {
 export function Header() {
   const { user, isGuest, logout } = useAuthStore();
   const location = useLocation();
+  const navigate = useNavigate();
   const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'));
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark);
     localStorage.setItem('theme', dark ? 'dark' : 'light');
   }, [dark]);
+
+  const handleSearch = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter' && searchQuery.trim()) {
+        navigate(`/jobs?search=${encodeURIComponent(searchQuery.trim())}`);
+      }
+    },
+    [navigate, searchQuery]
+  );
 
   const displayName = isGuest ? 'Guest' : user?.name || user?.email || 'User';
   const pageTitle = PAGE_TITLES[location.pathname] || 'AutoAnsys';
@@ -33,7 +44,10 @@ export function Header() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[hsl(var(--muted-foreground))]" />
         <input
           type="text"
-          placeholder="Search simulations, geometries..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={handleSearch}
+          placeholder="Search simulations... (Enter to search)"
           className="w-full rounded-lg border border-[hsl(var(--input))] bg-[hsl(var(--background))] pl-9 pr-3 py-1.5 text-xs placeholder:text-[hsl(var(--muted-foreground))] focus:outline-none focus:ring-1 focus:ring-[hsl(var(--ring))] transition-shadow"
         />
       </div>

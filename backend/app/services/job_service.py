@@ -257,10 +257,7 @@ class JobService:
         """Retrieve force coefficient data from completed job results."""
         job = await self._get_user_job(user, job_id)
         if job.status != JobStatus.completed:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Force data is only available for completed jobs",
-            )
+            return []
 
         from app.models.result_file import ResultFile
         result = await self.db.execute(
@@ -279,10 +276,7 @@ class JobService:
         """Retrieve residual convergence data from completed job results."""
         job = await self._get_user_job(user, job_id)
         if job.status != JobStatus.completed:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Residual data is only available for completed jobs",
-            )
+            return []
 
         from app.models.result_file import ResultFile
         result = await self.db.execute(

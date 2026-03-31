@@ -16,7 +16,7 @@ from app.services.geometry_service import GeometryService
 router = APIRouter(prefix="/api/geometries", tags=["geometries"])
 
 
-@router.post("/", response_model=GeometryResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=GeometryResponse, status_code=status.HTTP_201_CREATED)
 async def upload_geometry(
     file: UploadFile = File(...),
     component_name: str | None = None,
@@ -47,7 +47,7 @@ async def upload_geometry_alias(
     return await upload_geometry(file, component_name, description, db, current_user)
 
 
-@router.get("/", response_model=GeometryList)
+@router.get("", response_model=GeometryList)
 async def list_geometries(
     skip: int = 0,
     limit: int = 50,

@@ -14,7 +14,7 @@ export function useJobs(filters: JobFilters = {}) {
     queryKey: ['jobs', filters],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (filters.status) params.set('status', filters.status);
+      if (filters.status) params.set('status_filter', filters.status);
       if (filters.search) params.set('search', filters.search);
       if (filters.skip) params.set('skip', String(filters.skip));
       if (filters.limit) params.set('limit', String(filters.limit));
@@ -32,7 +32,14 @@ export function useJob(id: string | undefined) {
       return res.data;
     },
     enabled: !!id,
-    refetchInterval: 5000,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      // Stop polling once job reaches a terminal state
+      if (status === 'completed' || status === 'failed' || status === 'cancelled') {
+        return false;
+      }
+      return 5000;
+    },
   });
 }
 

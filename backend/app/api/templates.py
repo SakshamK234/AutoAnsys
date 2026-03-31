@@ -15,7 +15,7 @@ from app.schemas.template import TemplateCreate, TemplateResponse
 router = APIRouter(prefix="/api/templates", tags=["templates"])
 
 
-@router.post("/", response_model=TemplateResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=TemplateResponse, status_code=status.HTTP_201_CREATED)
 async def create_template(
     body: TemplateCreate,
     db: AsyncSession = Depends(get_db),
@@ -35,7 +35,7 @@ async def create_template(
     return template
 
 
-@router.get("/", response_model=list[TemplateResponse])
+@router.get("", response_model=list[TemplateResponse])
 async def list_templates(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),

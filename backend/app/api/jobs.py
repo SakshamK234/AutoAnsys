@@ -23,7 +23,7 @@ from app.services.job_service import JobService
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
 
-@router.post("/", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
 async def create_job(
     body: JobCreate,
     db: AsyncSession = Depends(get_db),
@@ -35,21 +35,27 @@ async def create_job(
     return job
 
 
-@router.get("/", response_model=JobListResponse)
+@router.get("", response_model=JobListResponse)
 async def list_jobs(
     skip: int = 0,
     limit: int = 50,
     status_filter: str | None = None,
+    search: str | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """List jobs for the current user, optionally filtered by status."""
+    """List jobs for the current user, optionally filtered by status and name search."""
     query = select(Job).where(Job.user_id == current_user.id)
     count_query = select(func.count()).select_from(Job).where(Job.user_id == current_user.id)
 
     if status_filter:
         query = query.where(Job.status == status_filter)
         count_query = count_query.where(Job.status == status_filter)
+
+    if search:
+        search_pattern = f"%{search}%"
+        query = query.where(Job.name.ilike(search_pattern))
+        count_query = count_query.where(Job.name.ilike(search_pattern))
 
     query = query.order_by(Job.created_at.desc()).offset(skip).limit(limit)
     result = await db.execute(query)

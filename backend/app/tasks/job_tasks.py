@@ -62,21 +62,101 @@ def _get_cluster_managers():
         return ssh, SlurmManager(ssh)
 
 
-@celery_app.task(name="app.tasks.job_tasks.submit_job_to_cluster")
-def submit_job_to_cluster(job_id: str) -> dict:
-    """Submit a job to the HPC cluster (called from API via .delay())."""
-    logger.info("Submitting job %s to cluster", job_id)
+@celery_app.task(name="app.tasks.job_tasks.submit_job_to_cluster", bind=True, max_retries=2)
+def submit_job_to_cluster(self, job_id: str) -> dict:
+    """Submit a job to the HPC cluster (background Celery task).
+
+    Performs the full pipeline: S3 download → journal gen → SFTP → sbatch.
+    This is an alternative to the synchronous submission in JobService.submit_job()
+    for cases where we want to return immediately and run submission in background.
+    """
+    logger.info("Submitting job %s to cluster (Celery task)", job_id)
 
     with SyncSessionLocal() as db:
+        from app.models.geometry import Geometry
+
         job = db.query(Job).filter(Job.id == uuid.UUID(job_id)).first()
         if not job:
             return {"job_id": job_id, "error": "Job not found"}
 
-        job.status = JobStatus.queued
-        job.submitted_at = _utcnow_naive()
-        db.commit()
+        if job.status != JobStatus.draft:
+            return {"job_id": job_id, "error": f"Job is in '{job.status.value}' state, expected draft"}
 
-    return {"job_id": job_id, "status": "submitted"}
+        geometry = db.query(Geometry).filter(Geometry.id == job.geometry_id).first()
+        if not geometry:
+            job.status = JobStatus.failed
+            db.commit()
+            return {"job_id": job_id, "error": "Geometry not found"}
+
+        workspace = f"{settings.CLUSTER_WORKSPACE_BASE}/{job.id}"
+        job.cluster_workspace = workspace
+
+        from app.utils.sanitize import sanitize_path
+        geom_filename = sanitize_path(geometry.original_name) or "geometry.stp"
+
+        ssh = None
+        tmpdir = None
+        try:
+            # 1. Download geometry from S3
+            tmpdir = tempfile.mkdtemp(prefix="autoansys_")
+            local_geom_path = os.path.join(tmpdir, geom_filename)
+            s3 = _get_s3_client()
+            s3.download_file(settings.S3_BUCKET, geometry.s3_key, local_geom_path)
+
+            # 2. Generate journal files
+            from app.journal.generator import JournalGenerator
+            gen = JournalGenerator()
+
+            mesh_jou = gen.generate_mesh_journal(
+                job.config["mesh"],
+                geometry_file=f"{workspace}/{geom_filename}",
+                output_case=f"{workspace}/result.cas.h5",
+            )
+            solver_jou = gen.generate_solver_journal(
+                job.config["solver"],
+                case_file=f"{workspace}/result.cas.h5",
+                workspace=workspace,
+            )
+            slurm_sh = gen.generate_slurm_script(
+                job.config["slurm"],
+                workspace=workspace,
+                fluent_module=settings.FLUENT_MODULE,
+            )
+
+            # 3. Connect to cluster and upload
+            ssh, slurm_mgr = _get_cluster_managers()
+
+            from app.cluster.sftp import SFTPManager
+            sftp_client = ssh.open_sftp()
+            sftp = SFTPManager(sftp_client)
+
+            sftp.upload_file(local_geom_path, f"{workspace}/{geom_filename}")
+            sftp.upload_string(mesh_jou, f"{workspace}/mesh_watertight.jou")
+            sftp.upload_string(solver_jou, f"{workspace}/solver.jou")
+            sftp.upload_string(slurm_sh, f"{workspace}/run.sh")
+            sftp.close()
+
+            # 4. Submit via sbatch
+            slurm_job_id = slurm_mgr.submit_job(f"{workspace}/run.sh")
+            job.slurm_job_id = slurm_job_id
+            job.status = JobStatus.queued
+            job.submitted_at = _utcnow_naive()
+            db.commit()
+
+            logger.info("Job %s submitted with SLURM ID %s", job.id, slurm_job_id)
+            return {"job_id": job_id, "slurm_job_id": slurm_job_id, "status": "queued"}
+
+        except Exception as exc:
+            logger.exception("Failed to submit job %s", job_id)
+            job.status = JobStatus.failed
+            db.commit()
+            return {"job_id": job_id, "error": str(exc)}
+        finally:
+            if ssh and not settings.CLUSTER_MOCK_MODE:
+                ssh.close()
+            if tmpdir:
+                import shutil
+                shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 @celery_app.task(name="app.tasks.job_tasks.poll_active_jobs")

@@ -1,12 +1,22 @@
+import { useQuery } from '@tanstack/react-query';
+import api from '@/lib/api';
 import { Server, Activity, Wifi, WifiOff } from 'lucide-react';
+import type { ClusterStatus as ClusterStatusType } from '@/types';
 
-interface ClusterStatusProps {
-  connected?: boolean;
-  nodes?: { total: number; idle: number; allocated: number; down: number };
-  queue?: { pending: number; running: number };
-}
+export function ClusterStatus() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['cluster-status'],
+    queryFn: async () => {
+      const res = await api.get<ClusterStatusType>('/cluster/status');
+      return res.data;
+    },
+    refetchInterval: 60000, // refresh every 60s
+  });
 
-export function ClusterStatus({ connected = false, nodes, queue }: ClusterStatusProps) {
+  const connected = data?.connected ?? false;
+  const nodes = data?.nodes;
+  const queue = data?.queue;
+
   return (
     <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-5">
       <div className="flex items-center gap-3 mb-4">
@@ -16,10 +26,16 @@ export function ClusterStatus({ connected = false, nodes, queue }: ClusterStatus
         <div className="flex-1">
           <h3 className="text-sm font-semibold">HPC Cluster</h3>
           <div className="flex items-center gap-1.5 mt-0.5">
-            <span className={`inline-flex h-1.5 w-1.5 rounded-full ${connected ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-            <span className="text-[10px] text-[hsl(var(--muted-foreground))]">
-              {connected ? 'Connected' : 'Disconnected'}
-            </span>
+            {isLoading ? (
+              <span className="text-[10px] text-[hsl(var(--muted-foreground))]">Checking...</span>
+            ) : (
+              <>
+                <span className={`inline-flex h-1.5 w-1.5 rounded-full ${connected ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                <span className="text-[10px] text-[hsl(var(--muted-foreground))]">
+                  {connected ? 'Connected' : 'Disconnected'}
+                </span>
+              </>
+            )}
           </div>
         </div>
         {connected
@@ -45,7 +61,7 @@ export function ClusterStatus({ connected = false, nodes, queue }: ClusterStatus
       ) : (
         <div className="flex items-center gap-2 rounded-lg bg-[hsl(var(--background))] p-3 text-xs text-[hsl(var(--muted-foreground))]">
           <Activity className="h-3.5 w-3.5 shrink-0" />
-          <span>Configure cluster connection in settings to submit jobs.</span>
+          <span>{data?.message || 'Configure cluster connection in settings to submit jobs.'}</span>
         </div>
       )}
     </div>
