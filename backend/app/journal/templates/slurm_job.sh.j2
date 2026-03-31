@@ -1,38 +1,66 @@
 #!/bin/bash
 #SBATCH --job-name={{ slurm.job_name | default("autoansys_cfd") }}
 #SBATCH --nodes={{ slurm.nodes | default(1) }}
-#SBATCH --ntasks-per-node={{ slurm.cores_per_node | default(32) }}
-#SBATCH --mem={{ slurm.memory_gb | default(64) }}G
+#SBATCH --ntasks={{ slurm.nodes | default(1) * slurm.cores_per_node | default(128) }}
+#SBATCH --ntasks-per-node={{ slurm.cores_per_node | default(128) }}
+#SBATCH --mem={{ slurm.memory_gb | default(243) }}G
 #SBATCH --time={{ "%02d" | format(slurm.walltime_hours | default(12)) }}:00:00
-#SBATCH --partition={{ slurm.partition | default("compute") }}
+#SBATCH --partition={{ slurm.partition | default("normal_q") }}
+#SBATCH --account={{ slurm.account | default("fsae") }}
 #SBATCH --output={{ workspace }}/slurm-%j.out
 #SBATCH --error={{ workspace }}/slurm-%j.err
 
+set -euo pipefail
+
+NCORES=$(( SLURM_NNODES * SLURM_NTASKS_PER_NODE ))
+
 echo "=== AutoAnsys Job Start: $(date) ==="
-echo "Job ID: $SLURM_JOB_ID"
-echo "Node:   $(hostname)"
-echo "Cores:  $SLURM_NTASKS"
+echo "Job ID:    $SLURM_JOB_ID"
+echo "Node(s):   $SLURM_NODELIST"
+echo "Cores:     $NCORES (${SLURM_NNODES} nodes x ${SLURM_NTASKS_PER_NODE} tasks/node)"
+echo "Workspace: {{ workspace }}"
 
 cd {{ workspace }}
 module load {{ fluent_module }}
 
+echo "Fluent binary: $(which fluent)"
+echo ""
+
 # Phase 1: Meshing
-echo "=== Phase 1: Meshing ==="
-fluent meshing -g -t${SLURM_NTASKS} -i mesh_watertight.jou
-MESH_EXIT=$?
+echo "=== Phase 1: Meshing ($(date)) ==="
+fluent 3ddp -meshing -g -t${NCORES} -i mesh_watertight.jou 2>&1 | tee meshing.log
+MESH_EXIT=${PIPESTATUS[0]}
+echo "Meshing exit code: $MESH_EXIT"
 if [ $MESH_EXIT -ne 0 ]; then
     echo "MESHING_FAILED (exit code $MESH_EXIT)"
+    echo "Last 50 lines of meshing output:"
+    tail -50 meshing.log
     exit $MESH_EXIT
 fi
 
+if [ ! -f "result.msh.h5" ]; then
+    echo "MESHING_FAILED: result.msh.h5 was not generated"
+    echo "Files in workspace:"
+    ls -la {{ workspace }}/
+    exit 1
+fi
+echo "Mesh file size: $(du -h result.msh.h5 | cut -f1)"
+echo ""
+
 # Phase 2: Solving
-echo "=== Phase 2: Solving ==="
-fluent 3ddp -g -t${SLURM_NTASKS} -i solver.jou
-SOLVE_EXIT=$?
+echo "=== Phase 2: Solving ($(date)) ==="
+fluent 3ddp -g -t${NCORES} -i solver.jou 2>&1 | tee solver.log
+SOLVE_EXIT=${PIPESTATUS[0]}
+echo "Solver exit code: $SOLVE_EXIT"
 if [ $SOLVE_EXIT -ne 0 ]; then
     echo "SOLVING_FAILED (exit code $SOLVE_EXIT)"
+    echo "Last 50 lines of solver output:"
+    tail -50 solver.log
     exit $SOLVE_EXIT
 fi
 
+echo ""
 echo "=== AutoAnsys Job Complete: $(date) ==="
+echo "Result files:"
+ls -lh {{ workspace }}/
 echo "JOB_COMPLETE"

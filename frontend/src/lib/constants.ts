@@ -73,10 +73,12 @@ export const MOMENTUM_SCHEMES = [
 ] as const;
 
 export const PARTITIONS = [
-  'compute',
-  'gpu',
-  'highmem',
-  'debug',
+  'normal_q',
+  'preemptable_q',
+  'a100_normal_q',
+  'a100_preemptable_q',
+  'h200_normal_q',
+  'h200_preemptable_q',
 ] as const;
 
 export const DEFAULT_MESH_CONFIG: MeshConfig = {
@@ -156,9 +158,10 @@ export const DEFAULT_SOLVER_CONFIG: SolverConfig = {
 
 export const DEFAULT_SLURM_CONFIG: SlurmConfig = {
   nodes: 1,
-  cores_per_node: 48,
-  memory_gb: 128,
+  cores_per_node: 128,
+  memory_gb: 243,
   walltime_hours: 24,
-  partition: 'compute',
+  partition: 'normal_q',
+  account: 'fsae',
   job_name: 'autoansys_cfd',
 };

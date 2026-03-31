@@ -35,7 +35,7 @@ function validateStep3(config: SlurmConfig): string | null {
   if (config.nodes < 1 || config.nodes > 64) return 'Nodes must be between 1 and 64.';
   if (config.cores_per_node < 1 || config.cores_per_node > 128) return 'Cores per node must be between 1 and 128.';
   if (config.memory_gb < 1 || config.memory_gb > 1024) return 'Memory must be between 1 and 1024 GB.';
-  if (config.walltime_hours < 1 || config.walltime_hours > 72) return 'Wall time must be between 1 and 72 hours.';
+  if (config.walltime_hours < 1 || config.walltime_hours > 168) return 'Wall time must be between 1 and 168 hours.';
   return null;
 }
 
@@ -44,6 +44,7 @@ export function JobWizard() {
   const [step, setStep] = useState(0);
   const [name, setName] = useState('');
   const [geometryId, setGeometryId] = useState('');
+  const [groupId, setGroupId] = useState('');
   const [meshConfig, setMeshConfig] = useState<MeshConfig>(DEFAULT_MESH_CONFIG);
   const [solverConfig, setSolverConfig] = useState<SolverConfig>(DEFAULT_SOLVER_CONFIG);
   const [slurmConfig, setSlurmConfig] = useState<SlurmConfig>(DEFAULT_SLURM_CONFIG);
@@ -82,6 +83,7 @@ export function JobWizard() {
       const res = await api.post('/jobs', {
         name,
         geometry_id: geometryId,
+        group_id: groupId || undefined,
         mesh_config: meshConfig,
         solver_config: solverConfig,
         slurm_config: slurmConfig,
@@ -170,7 +172,7 @@ export function JobWizard() {
 
       {/* Step content */}
       <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6 animate-fade-in">
-        {step === 0 && <GeometryStep name={name} setName={setName} geometryId={geometryId} setGeometryId={setGeometryId} />}
+        {step === 0 && <GeometryStep name={name} setName={setName} geometryId={geometryId} setGeometryId={setGeometryId} groupId={groupId} setGroupId={setGroupId} />}
         {step === 1 && <MeshConfigStep config={meshConfig} setConfig={setMeshConfig} />}
         {step === 2 && <SolverConfigStep config={solverConfig} setConfig={setSolverConfig} />}
         {step === 3 && <ResourceConfigStep config={slurmConfig} setConfig={setSlurmConfig} />}

@@ -25,15 +25,16 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # ── HPC Cluster ───────────────────────────────────────────────────────
-    CLUSTER_HOST: str = "localhost"
+    CLUSTER_HOST: str = "tinkercliffs1.arc.vt.edu"
     CLUSTER_PORT: int = 22
-    CLUSTER_USER: str = "cfd"
-    CLUSTER_KEY_PATH: str = "~/.ssh/id_rsa"
-    CLUSTER_WORKSPACE_BASE: str = "/scratch/cfd/jobs"
+    CLUSTER_USER: str = "sakshamkumar"
+    CLUSTER_KEY_PATH: str = "~/.ssh/arc_autoansys"
+    CLUSTER_WORKSPACE_BASE: str = "/scratch/sakshamkumar/autoansys/jobs"
+    CLUSTER_ACCOUNT: str = "fsae"
     CLUSTER_MOCK_MODE: bool = True
 
     # ── ANSYS / Fluent ────────────────────────────────────────────────────
-    FLUENT_MODULE: str = "ansys/2024r2"
+    FLUENT_MODULE: str = "ANSYS/2025R1"
 
     # ── Polling ───────────────────────────────────────────────────────────
     JOB_POLL_INTERVAL: int = 30

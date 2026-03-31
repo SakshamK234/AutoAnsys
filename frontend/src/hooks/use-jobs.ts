@@ -7,6 +7,7 @@ interface JobFilters {
   search?: string;
   skip?: number;
   limit?: number;
+  group_id?: string;
 }
 
 export function useJobs(filters: JobFilters = {}) {
@@ -18,6 +19,7 @@ export function useJobs(filters: JobFilters = {}) {
       if (filters.search) params.set('search', filters.search);
       if (filters.skip) params.set('skip', String(filters.skip));
       if (filters.limit) params.set('limit', String(filters.limit));
+      if (filters.group_id) params.set('group_id', filters.group_id);
       const res = await api.get<JobListResponse>(`/jobs?${params}`);
       return res.data;
     },

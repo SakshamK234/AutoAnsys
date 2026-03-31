@@ -40,14 +40,19 @@ export function ResourceConfigStep({ config, setConfig }: ResourceConfigStepProp
         </div>
         <div>
           <label className="block text-xs font-medium mb-1">Wall Time (hours)</label>
-          <input type="number" min={1} max={72} value={config.walltime_hours} onChange={(e) => setConfig({ ...config, walltime_hours: Math.max(1, Math.min(72, +e.target.value)) })} className={inputClass} />
-          <p className="mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">1 – 72 hours</p>
+          <input type="number" min={1} max={168} value={config.walltime_hours} onChange={(e) => setConfig({ ...config, walltime_hours: Math.max(1, Math.min(168, +e.target.value)) })} className={inputClass} />
+          <p className="mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">1 – 168 hours (7 days max on normal_q)</p>
         </div>
         <div>
           <label className="block text-xs font-medium mb-1">Partition</label>
           <select value={config.partition} onChange={(e) => setConfig({ ...config, partition: e.target.value })} className={inputClass}>
             {PARTITIONS.map((p) => <option key={p} value={p}>{p}</option>)}
           </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium mb-1">SLURM Account</label>
+          <input type="text" value={config.account} onChange={(e) => setConfig({ ...config, account: e.target.value })} className={inputClass} />
+          <p className="mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">ARC allocation account name</p>
         </div>
       </div>
 

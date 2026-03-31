@@ -3,9 +3,11 @@
 ; ════════════════════════════════════════════════════════════════════════
 
 ; ── Report Definitions ────────────────────────────────────────────────
-/solve/report-definitions/add cd force force-vector 1 0 0 thread-names car-body* () quit
-/solve/report-definitions/add cl force force-vector 0 0 1 thread-names car-body* () quit
-/solve/report-definitions/add cm moment moment-vector 0 1 0 moment-center 0 0 0 thread-names car-body* () quit
+; NOTE: thread-names uses wildcard * to match wall zones from geometry.
+; If your geometry has specific zone names, adjust the patterns below.
+/solve/report-definitions/add cd force force-vector 1 0 0 thread-names * () quit
+/solve/report-definitions/add cl force force-vector 0 0 1 thread-names * () quit
+/solve/report-definitions/add cm moment moment-vector 0 1 0 moment-center 0 0 0 thread-names * () quit
 
 ; ── Report Files ──────────────────────────────────────────────────────
 /solve/report-files/add forces-report report-defs cd cl cm () file-name "{{ workspace }}/forces.csv" print? yes quit

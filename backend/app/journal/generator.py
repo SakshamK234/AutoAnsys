@@ -23,31 +23,31 @@ class JournalGenerator:
             keep_trailing_newline=True,
         )
 
-    def generate_mesh_journal(self, mesh_config: dict, geometry_file: str, output_case: str) -> str:
+    def generate_mesh_journal(self, mesh_config: dict, geometry_file: str, output_mesh: str) -> str:
         """Generate a Fluent Mesher Watertight Geometry journal file.
 
         Args:
             mesh_config: Mesh configuration dictionary.
             geometry_file: Absolute path to geometry file on cluster.
-            output_case: Absolute path for output .cas.h5 file.
+            output_mesh: Absolute path for output .msh.h5 file.
         """
         template = self.env.get_template("mesh_watertight.jou.j2")
         return template.render(
             mesh=mesh_config,
             geometry_file=geometry_file,
-            output_case=output_case,
+            output_mesh=output_mesh,
         )
 
-    def generate_solver_journal(self, solver_config: dict, case_file: str, workspace: str) -> str:
+    def generate_solver_journal(self, solver_config: dict, mesh_file: str, workspace: str) -> str:
         """Generate Fluent solver setup + run journal.
 
         Args:
             solver_config: Solver configuration dictionary.
-            case_file: Absolute path to the .cas.h5 file.
+            mesh_file: Absolute path to the .msh.h5 file from meshing.
             workspace: Job workspace directory on cluster.
         """
         template = self.env.get_template("solver_setup.jou.j2")
-        setup = template.render(solver=solver_config, case_file=case_file, workspace=workspace)
+        setup = template.render(solver=solver_config, mesh_file=mesh_file, workspace=workspace)
 
         template_run = self.env.get_template("solver_run.jou.j2")
         run = template_run.render(solver=solver_config, workspace=workspace)
@@ -58,7 +58,7 @@ class JournalGenerator:
         self,
         slurm_config: dict,
         workspace: str,
-        fluent_module: str = "ansys/2024r2",
+        fluent_module: str = "ANSYS/2025R1",
     ) -> str:
         """Generate a SLURM batch script.
 

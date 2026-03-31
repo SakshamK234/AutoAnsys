@@ -129,6 +129,8 @@ export function JobDetailPage() {
             {[
               { label: 'Status', value: job.status },
               { label: 'Created', value: formatDate(job.created_at) },
+              job.owner_name ? { label: 'Owner', value: job.owner_name } : null,
+              job.group_name ? { label: 'Group', value: job.group_name } : null,
               job.submitted_at ? { label: 'Submitted', value: formatDate(job.submitted_at) } : null,
               job.started_at ? { label: 'Started', value: formatDate(job.started_at) } : null,
               job.completed_at ? { label: 'Completed', value: formatDate(job.completed_at) } : null,

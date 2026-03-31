@@ -31,6 +31,31 @@ export interface GeometryList {
   total: number;
 }
 
+// ── Group ─────────────────────────────────────────────────────────────────────
+
+export interface GroupMember {
+  id: string;
+  user_id: string;
+  role: string;
+  joined_at: string;
+  user_name: string | null;
+  user_email: string | null;
+}
+
+export interface Group {
+  id: string;
+  name: string;
+  description: string | null;
+  invite_code: string;
+  created_by: string;
+  created_at: string;
+  member_count: number;
+}
+
+export interface GroupDetail extends Group {
+  members: GroupMember[];
+}
+
 // ── Job ──────────────────────────────────────────────────────────────────────
 
 export type JobStatus =
@@ -168,6 +193,7 @@ export interface SlurmConfig {
   memory_gb: number;
   walltime_hours: number;
   partition: string;
+  account: string;
   job_name: string;
 }
 
@@ -191,6 +217,9 @@ export interface Job {
   started_at: string | null;
   completed_at: string | null;
   cluster_workspace: string | null;
+  group_id: string | null;
+  group_name: string | null;
+  owner_name: string | null;
   created_at: string;
 }
 

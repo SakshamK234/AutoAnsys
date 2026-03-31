@@ -7,9 +7,10 @@ import type { Job } from '@/types';
 interface JobTableProps {
   jobs: Job[];
   loading?: boolean;
+  showOwner?: boolean;
 }
 
-export function JobTable({ jobs, loading }: JobTableProps) {
+export function JobTable({ jobs, loading, showOwner }: JobTableProps) {
   const navigate = useNavigate();
 
   if (loading) {
@@ -42,6 +43,9 @@ export function JobTable({ jobs, loading }: JobTableProps) {
         <thead>
           <tr className="border-b border-[hsl(var(--border))]">
             <th className="px-5 py-3 text-left text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">Name</th>
+            {showOwner && (
+              <th className="px-5 py-3 text-left text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">Owner</th>
+            )}
             <th className="px-5 py-3 text-left text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">Status</th>
             <th className="px-5 py-3 text-left text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">Created</th>
             <th className="px-5 py-3 text-left text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">SLURM ID</th>
@@ -55,7 +59,19 @@ export function JobTable({ jobs, loading }: JobTableProps) {
               onClick={() => navigate(`/jobs/${job.id}`)}
               className="group cursor-pointer border-b border-[hsl(var(--border))] last:border-0 transition-colors hover:bg-[hsl(var(--muted))]"
             >
-              <td className="px-5 py-3.5 font-medium">{job.name}</td>
+              <td className="px-5 py-3.5 font-medium">
+                {job.name}
+                {job.group_name && !showOwner && (
+                  <span className="ml-2 text-[10px] font-normal text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded px-1.5 py-0.5">
+                    {job.group_name}
+                  </span>
+                )}
+              </td>
+              {showOwner && (
+                <td className="px-5 py-3.5 text-[hsl(var(--muted-foreground))]">
+                  {job.owner_name || '—'}
+                </td>
+              )}
               <td className="px-5 py-3.5">
                 <JobStatusBadge status={job.status} />
               </td>

@@ -3,11 +3,12 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
 from app.database import get_db
+from app.models.group import Group, GroupMembership
 from app.models.job import Job
 from app.models.user import User
 from app.schemas.job import (
@@ -23,16 +24,27 @@ from app.services.job_service import JobService
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
 
+def _job_to_response(job: Job, group_name: str | None = None) -> dict:
+    """Convert a Job ORM instance to a dict suitable for JobResponse, including computed fields."""
+    d = {c.name: getattr(job, c.name) for c in job.__table__.columns}
+    d["group_name"] = group_name
+    return d
+
+
 @router.post("", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
 async def create_job(
     body: JobCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> Job:
+) -> dict:
     """Create a new simulation job."""
     service = JobService(db)
     job = await service.create_job(user=current_user, data=body)
-    return job
+    group_name = None
+    if job.group_id:
+        gr = await db.execute(select(Group.name).where(Group.id == job.group_id))
+        group_name = gr.scalar_one_or_none()
+    return _job_to_response(job, group_name)
 
 
 @router.get("", response_model=JobListResponse)
@@ -41,12 +53,28 @@ async def list_jobs(
     limit: int = 50,
     status_filter: str | None = None,
     search: str | None = None,
+    group_id: uuid.UUID | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """List jobs for the current user, optionally filtered by status and name search."""
-    query = select(Job).where(Job.user_id == current_user.id)
-    count_query = select(func.count()).select_from(Job).where(Job.user_id == current_user.id)
+    """List jobs. By default returns only the user's jobs.
+    Pass group_id to see all jobs shared with that group (requires membership).
+    """
+    if group_id:
+        mem = await db.execute(
+            select(GroupMembership).where(
+                GroupMembership.user_id == current_user.id,
+                GroupMembership.group_id == group_id,
+            )
+        )
+        if mem.scalar_one_or_none() is None:
+            raise HTTPException(status_code=403, detail="Not a member of this group")
+        base_filter = Job.group_id == group_id
+    else:
+        base_filter = Job.user_id == current_user.id
+
+    query = select(Job).where(base_filter)
+    count_query = select(func.count()).select_from(Job).where(base_filter)
 
     if status_filter:
         query = query.where(Job.status == status_filter)
@@ -62,7 +90,26 @@ async def list_jobs(
     items = list(result.scalars().all())
     total = (await db.execute(count_query)).scalar() or 0
 
-    return {"items": items, "total": total}
+    group_name_cache: dict[uuid.UUID, str | None] = {}
+    owner_name_cache: dict[uuid.UUID, str | None] = {}
+    response_items = []
+    for job in items:
+        gn = None
+        if job.group_id:
+            if job.group_id not in group_name_cache:
+                gr = await db.execute(select(Group.name).where(Group.id == job.group_id))
+                group_name_cache[job.group_id] = gr.scalar_one_or_none()
+            gn = group_name_cache[job.group_id]
+
+        if job.user_id not in owner_name_cache:
+            ur = await db.execute(select(User.name).where(User.id == job.user_id))
+            owner_name_cache[job.user_id] = ur.scalar_one_or_none()
+
+        d = _job_to_response(job, gn)
+        d["owner_name"] = owner_name_cache[job.user_id]
+        response_items.append(d)
+
+    return {"items": response_items, "total": total}
 
 
 @router.get("/{job_id}", response_model=JobResponse)
@@ -70,15 +117,37 @@ async def get_job(
     job_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> Job:
-    """Get full details for a single job."""
-    result = await db.execute(
-        select(Job).where(Job.id == job_id, Job.user_id == current_user.id)
-    )
+) -> dict:
+    """Get full details for a single job. Accessible by owner or group members."""
+    result = await db.execute(select(Job).where(Job.id == job_id))
     job = result.scalar_one_or_none()
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
-    return job
+
+    allowed = job.user_id == current_user.id
+    if not allowed and job.group_id:
+        mem = await db.execute(
+            select(GroupMembership).where(
+                GroupMembership.user_id == current_user.id,
+                GroupMembership.group_id == job.group_id,
+            )
+        )
+        allowed = mem.scalar_one_or_none() is not None
+
+    if not allowed:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+
+    group_name = None
+    if job.group_id:
+        gr = await db.execute(select(Group.name).where(Group.id == job.group_id))
+        group_name = gr.scalar_one_or_none()
+
+    ur = await db.execute(select(User.name).where(User.id == job.user_id))
+    owner_name = ur.scalar_one_or_none()
+
+    d = _job_to_response(job, group_name)
+    d["owner_name"] = owner_name
+    return d
 
 
 @router.get("/{job_id}/status", response_model=JobStatusResponse)

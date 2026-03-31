@@ -1,0 +1,35 @@
+; AutoAnsys Diagnostic v5 — Try all workflow init methods (ANSYS 2025R1)
+
+(%py-exec "print('=== METHOD 1: InitializeWorkflow ===')")
+(%py-exec "workflow.InitializeWorkflow(WorkflowType=r'Watertight Geometry')")
+(%py-exec "print('Tasks after InitializeWorkflow:', workflow.TaskObject.get_object_names())")
+
+(%py-exec "print('=== METHOD 2: ResetWorkflow then try CreateNewWorkflow ===')")
+(%py-exec "workflow.ResetWorkflow()")
+(%py-exec "print('After reset tasks:', workflow.TaskObject.get_object_names())")
+
+(%py-exec "print('=== METHOD 2b: CreateNewWorkflow ===')")
+(%py-exec "print('CreateNewWorkflow signature:', type(workflow.CreateNewWorkflow))")
+
+(%py-exec "print('=== METHOD 2c: Try CreateNewWorkflow with args ===')")
+(%py-exec "workflow.CreateNewWorkflow(WorkflowType=r'Watertight Geometry')")
+(%py-exec "print('Tasks after CreateNewWorkflow:', workflow.TaskObject.get_object_names())")
+
+(%py-exec "print('=== METHOD 3: Check Workflow attr ===')")
+(%py-exec "print('workflow.Workflow type:', type(workflow.Workflow))")
+(%py-exec "print('workflow.Workflow:', workflow.Workflow)")
+(%py-exec "print('workflow.Workflow attrs:', [x for x in dir(workflow.Workflow) if not x.startswith('_')])")
+
+(%py-exec "print('=== METHOD 4: Check if meshing_utilities exists ===')")
+(%py-exec "print('All globals:', [x for x in dir() if not x.startswith('_')])")
+
+(%py-exec "print('=== METHOD 5: Try LoadWorkflow ===')")
+(%py-exec "print('LoadWorkflow type:', type(workflow.LoadWorkflow))")
+
+(%py-exec "print('=== METHOD 6: Try watertight via TUI ===')")
+/workflow/create "Watertight Geometry"
+
+(%py-exec "print('Tasks after TUI create:', workflow.TaskObject.get_object_names())")
+
+(%py-exec "print('=== DONE ===')")
+/exit yes

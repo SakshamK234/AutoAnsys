@@ -65,7 +65,14 @@ services:
       S3_SECRET_KEY: minioadmin
       S3_BUCKET: autoansys
       JWT_SECRET: dev-secret-change-in-production
-      CLUSTER_MOCK_MODE: "true"
+      CLUSTER_MOCK_MODE: "false"
+      CLUSTER_HOST: "tinkercliffs1.arc.vt.edu"
+      CLUSTER_PORT: "22"
+      CLUSTER_USER: "sakshamkumar"
+      CLUSTER_KEY_PATH: "/root/.ssh/arc_autoansys"
+      CLUSTER_WORKSPACE_BASE: "/scratch/sakshamkumar/autoansys/jobs"
+      CLUSTER_ACCOUNT: "fsae"
+      FLUENT_MODULE: "ANSYS/2025R1"
     depends_on:
       postgres:
         condition: service_healthy
@@ -77,6 +84,7 @@ services:
       - ./backend/app:/app/app
       - ./backend/alembic:/app/alembic
       - ./backend/entrypoint.sh:/app/entrypoint.sh
+      - ~/.ssh/arc_autoansys:/root/.ssh/arc_autoansys:ro
 
   celery-worker:
     build:
@@ -91,7 +99,17 @@ services:
       S3_SECRET_KEY: minioadmin
       S3_BUCKET: autoansys
       JWT_SECRET: dev-secret-change-in-production
-      CLUSTER_MOCK_MODE: "true"
+      CLUSTER_MOCK_MODE: "false"
+      CLUSTER_HOST: "tinkercliffs1.arc.vt.edu"
+      CLUSTER_PORT: "22"
+      CLUSTER_USER: "sakshamkumar"
+      CLUSTER_KEY_PATH: "/root/.ssh/arc_autoansys"
+      CLUSTER_WORKSPACE_BASE: "/scratch/sakshamkumar/autoansys/jobs"
+      CLUSTER_ACCOUNT: "fsae"
+      FLUENT_MODULE: "ANSYS/2025R1"
+    volumes:
+      - ./backend/app:/app/app
+      - ~/.ssh/arc_autoansys:/root/.ssh/arc_autoansys:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -106,6 +124,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/autoansys
       REDIS_URL: redis://redis:6379/0
+      CLUSTER_MOCK_MODE: "false"
     depends_on:
       redis:
         condition: service_healthy

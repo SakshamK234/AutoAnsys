@@ -47,6 +47,9 @@ class Job(Base):
     started_at: Mapped[datetime | None] = mapped_column(nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
     cluster_workspace: Mapped[str | None] = mapped_column(Text, nullable=True)
+    group_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("groups.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         default=_utcnow, nullable=False
     )
@@ -54,6 +57,7 @@ class Job(Base):
     # Relationships
     owner: Mapped["User"] = relationship(back_populates="jobs")  # noqa: F821
     geometry: Mapped["Geometry"] = relationship(back_populates="jobs")  # noqa: F821
+    group: Mapped["Group | None"] = relationship(back_populates="jobs")  # noqa: F821
     result_files: Mapped[list["ResultFile"]] = relationship(  # noqa: F821
         back_populates="job", cascade="all, delete-orphan"
     )

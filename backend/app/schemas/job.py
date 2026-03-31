@@ -137,10 +137,11 @@ class SolverConfig(BaseModel):
 
 class SlurmConfig(BaseModel):
     nodes: int = 1
-    cores_per_node: int = 48
-    memory_gb: int = 128
+    cores_per_node: int = 128
+    memory_gb: int = 243
     walltime_hours: int = 24
-    partition: str = "compute"
+    partition: str = "normal_q"
+    account: str = "fsae"
     job_name: str = "autoansys_cfd"
 
 
@@ -150,6 +151,7 @@ class SlurmConfig(BaseModel):
 class JobCreate(BaseModel):
     geometry_id: uuid.UUID
     name: str
+    group_id: uuid.UUID | None = None
     mesh_config: MeshConfig = Field(default_factory=MeshConfig)
     solver_config: SolverConfig = Field(default_factory=SolverConfig)
     slurm_config: SlurmConfig = Field(default_factory=SlurmConfig)
@@ -169,6 +171,9 @@ class JobResponse(BaseModel):
     started_at: datetime | None
     completed_at: datetime | None
     cluster_workspace: str | None
+    group_id: uuid.UUID | None = None
+    group_name: str | None = None
+    owner_name: str | None = None
     created_at: datetime
 
 

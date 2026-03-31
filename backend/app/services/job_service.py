@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.geometry import Geometry
+from app.models.group import Group, GroupMembership
 from app.models.job import Job, JobStatus
 from app.models.user import User
 from app.schemas.job import JobCreate
@@ -62,6 +63,19 @@ class JobService:
 
         sanitize_path(geometry.original_name)
 
+        if data.group_id:
+            membership = await self.db.execute(
+                select(GroupMembership).where(
+                    GroupMembership.user_id == user.id,
+                    GroupMembership.group_id == data.group_id,
+                )
+            )
+            if membership.scalar_one_or_none() is None:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You are not a member of the selected group",
+                )
+
         config = {
             "mesh": data.mesh_config.model_dump(),
             "solver": data.solver_config.model_dump(),
@@ -74,6 +88,7 @@ class JobService:
             name=safe_name,
             status=JobStatus.draft,
             config=config,
+            group_id=data.group_id,
         )
         self.db.add(job)
         await self.db.flush()
@@ -176,7 +191,7 @@ class JobService:
 
     async def get_force_data(self, user: User, job_id: uuid.UUID) -> list[dict]:
         """Retrieve force coefficient data from completed job results."""
-        job = await self._get_user_job(user, job_id)
+        job = await self._get_user_job(user, job_id, allow_group=True)
         if job.status != JobStatus.completed:
             return []
 
@@ -195,7 +210,7 @@ class JobService:
 
     async def get_residual_data(self, user: User, job_id: uuid.UUID) -> list[dict]:
         """Retrieve residual convergence data from completed job results."""
-        job = await self._get_user_job(user, job_id)
+        job = await self._get_user_job(user, job_id, allow_group=True)
         if job.status != JobStatus.completed:
             return []
 
@@ -255,15 +270,29 @@ class JobService:
 
     # ── Helpers ───────────────────────────────────────────────────────────
 
-    async def _get_user_job(self, user: User, job_id: uuid.UUID) -> Job:
-        """Fetch a job and verify ownership."""
-        result = await self.db.execute(
-            select(Job).where(Job.id == job_id, Job.user_id == user.id)
-        )
+    async def _get_user_job(self, user: User, job_id: uuid.UUID, *, allow_group: bool = False) -> Job:
+        """Fetch a job and verify ownership or group membership."""
+        result = await self.db.execute(select(Job).where(Job.id == job_id))
         job = result.scalar_one_or_none()
         if job is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Job not found",
             )
-        return job
+        if job.user_id == user.id:
+            return job
+
+        if allow_group and job.group_id:
+            mem = await self.db.execute(
+                select(GroupMembership).where(
+                    GroupMembership.user_id == user.id,
+                    GroupMembership.group_id == job.group_id,
+                )
+            )
+            if mem.scalar_one_or_none() is not None:
+                return job
+
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )

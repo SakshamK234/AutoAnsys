@@ -123,11 +123,11 @@ def submit_job_to_cluster(self, job_id: str) -> dict:
             mesh_jou = gen.generate_mesh_journal(
                 job.config["mesh"],
                 geometry_file=f"{workspace}/{geom_filename}",
-                output_case=f"{workspace}/result.cas.h5",
+                output_mesh=f"{workspace}/result.msh.h5",
             )
             solver_jou = gen.generate_solver_journal(
                 job.config["solver"],
-                case_file=f"{workspace}/result.cas.h5",
+                mesh_file=f"{workspace}/result.msh.h5",
                 workspace=workspace,
             )
             slurm_sh = gen.generate_slurm_script(
@@ -317,6 +317,7 @@ def _download_real_results(db, job: Job, s3) -> int:
         "forces.csv": "forces_csv",
         "residuals.csv": "residuals_csv",
         "result.cas.h5": "case_data",
+        "result.msh.h5": "mesh_data",
     }
 
     try:
