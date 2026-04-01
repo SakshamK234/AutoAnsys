@@ -1,0 +1,24 @@
+; Diagnostic: discover solver Python API after switch-to-solution-mode
+(%py-exec "workflow.InitializeWorkflow(WorkflowType=r'Watertight Geometry')")
+switch-to-solution-mode
+yes
+
+(%py-exec "print('=== PYTHON GLOBALS ===')")
+(%py-exec "print([x for x in dir() if not x.startswith('_')])")
+
+(%py-exec "print('=== SETUP TYPE ===')")
+(%py-exec "print(type(setup) if 'setup' in dir() else 'NO setup')")
+(%py-exec "print(type(solver) if 'solver' in dir() else 'NO solver')")
+(%py-exec "print(type(results) if 'results' in dir() else 'NO results')")
+
+(%py-exec "print('=== TUI TYPE ===')")
+(%py-exec "print(type(tui) if 'tui' in dir() else 'NO tui')")
+
+(%py-exec "print('=== SETUP ATTRS ===')")
+(%py-exec "print([x for x in dir(setup) if not x.startswith('_')]) if 'setup' in dir() else print('N/A')")
+
+(%py-exec "print('=== SET/BC PATH ===')")
+/define/boundary-conditions/set/?
+
+(%py-exec "print('=== DONE ===')")
+/exit yes

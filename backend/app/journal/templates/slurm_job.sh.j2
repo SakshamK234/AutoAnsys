@@ -26,37 +26,16 @@ module load {{ fluent_module }}
 echo "Fluent binary: $(which fluent)"
 echo ""
 
-# Phase 1: Meshing
-echo "=== Phase 1: Meshing ($(date)) ==="
-fluent 3ddp -meshing -g -t${NCORES} -i mesh_watertight.jou 2>&1 | tee meshing.log
-MESH_EXIT=${PIPESTATUS[0]}
-echo "Meshing exit code: $MESH_EXIT"
-if [ $MESH_EXIT -ne 0 ]; then
-    echo "MESHING_FAILED (exit code $MESH_EXIT)"
-    echo "Last 50 lines of meshing output:"
-    tail -50 meshing.log
-    exit $MESH_EXIT
-fi
-
-if [ ! -f "result.msh.h5" ]; then
-    echo "MESHING_FAILED: result.msh.h5 was not generated"
-    echo "Files in workspace:"
-    ls -la {{ workspace }}/
-    exit 1
-fi
-echo "Mesh file size: $(du -h result.msh.h5 | cut -f1)"
-echo ""
-
-# Phase 2: Solving
-echo "=== Phase 2: Solving ($(date)) ==="
-fluent 3ddp -g -t${NCORES} -i solver.jou 2>&1 | tee solver.log
-SOLVE_EXIT=${PIPESTATUS[0]}
-echo "Solver exit code: $SOLVE_EXIT"
-if [ $SOLVE_EXIT -ne 0 ]; then
-    echo "SOLVING_FAILED (exit code $SOLVE_EXIT)"
-    echo "Last 50 lines of solver output:"
-    tail -50 solver.log
-    exit $SOLVE_EXIT
+# Single Fluent session: meshing → switch-to-solution-mode → solver
+echo "=== Fluent Start ($(date)) ==="
+fluent 3ddp -meshing -g -t${NCORES} -i autoansys.jou 2>&1 | tee fluent.log
+FLUENT_EXIT=${PIPESTATUS[0]}
+echo "Fluent exit code: $FLUENT_EXIT"
+if [ $FLUENT_EXIT -ne 0 ]; then
+    echo "FLUENT_FAILED (exit code $FLUENT_EXIT)"
+    echo "Last 50 lines of output:"
+    tail -50 fluent.log
+    exit $FLUENT_EXIT
 fi
 
 echo ""

@@ -119,18 +119,22 @@ export const DEFAULT_SOLVER_CONFIG: SolverConfig = {
   },
   boundary_conditions: {
     inlet: {
+      zone_name: 'inlet',
       velocity: 20,
       turbulent_intensity: 0.01,
       turbulent_viscosity_ratio: 10,
     },
     outlet: {
+      zone_name: 'outlet',
       gauge_pressure: 0,
     },
     ground: {
+      zone_name: 'ground',
       type: 'moving-wall',
       velocity: 20,
     },
     symmetry: {
+      zone_names: ['symmetry-top', 'symmetry-side-1', 'symmetry-side-2'],
       type: 'symmetry',
     },
   },

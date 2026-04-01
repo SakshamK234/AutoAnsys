@@ -1,12 +1,12 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ResidualChart } from '@/components/jobs/residual-chart';
 import { ForceChart } from '@/components/jobs/force-chart';
 import { JobStatusBadge } from '@/components/jobs/job-status-badge';
 import { useJob, useJobForces, useJobResiduals, useCancelJob } from '@/hooks/use-jobs';
 import { cn, formatDate, formatFileSize } from '@/lib/utils';
-import { ArrowLeft, XCircle, Download, FileIcon, FileText } from 'lucide-react';
+import { ArrowLeft, XCircle, Download, FileIcon, FileText, Image } from 'lucide-react';
 import api from '@/lib/api';
 
 interface ResultFile {
@@ -24,9 +24,81 @@ const FILE_TYPE_LABELS: Record<string, string> = {
   residuals_csv: 'Residual History',
   case_data: 'Case Data',
   slurm_log: 'SLURM Log',
+  contour_image: 'Contour Image',
 };
 
-const tabs = ['Overview', 'Residuals', 'Forces', 'Files', 'Config'] as const;
+const CONTOUR_LABELS: Record<string, string> = {
+  'contour_velocity.png': 'Velocity Magnitude',
+  'contour_pressure.png': 'Static Pressure',
+  'contour_total_pressure.png': 'Total Pressure',
+  'contour_wall_shear.png': 'Wall Shear Stress',
+};
+
+const tabs = ['Overview', 'Residuals', 'Forces', 'Contours', 'Files', 'Config'] as const;
+
+function ContourCard({ file, jobId }: { file: ResultFile; jobId: string }) {
+  const [imgUrl, setImgUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  // Fetch presigned URL on mount
+  useEffect(() => {
+    api
+      .get<{ url: string; filename: string }>(`/files/${jobId}/download/${file.id}`)
+      .then((res) => {
+        setImgUrl(res.data.url);
+        setLoading(false);
+      })
+      .catch(() => {
+        setError(true);
+        setLoading(false);
+      });
+  }, [jobId, file.id]);
+
+  const label = CONTOUR_LABELS[file.filename] || file.filename;
+
+  return (
+    <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[hsl(var(--border))]">
+        <div className="flex items-center gap-2">
+          <Image className="h-4 w-4 text-[hsl(var(--primary))]" />
+          <span className="text-sm font-semibold">{label}</span>
+        </div>
+        {imgUrl && (
+          <a
+            href={imgUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 rounded-lg border border-[hsl(var(--border))] px-2.5 py-1 text-xs font-medium hover:bg-[hsl(var(--accent))] transition-colors"
+          >
+            <Download className="h-3 w-3" />
+            Download
+          </a>
+        )}
+      </div>
+      <div className="relative aspect-video bg-black/5">
+        {loading && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-[hsl(var(--primary))] border-t-transparent" />
+          </div>
+        )}
+        {error && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <p className="text-xs text-[hsl(var(--muted-foreground))]">Failed to load image</p>
+          </div>
+        )}
+        {imgUrl && !error && (
+          <img
+            src={imgUrl}
+            alt={label}
+            className="w-full h-full object-contain"
+            onError={() => setError(true)}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function JobDetailPage() {
   const { id } = useParams();
@@ -148,6 +220,37 @@ export function JobDetailPage() {
         )}
         {activeTab === 'Residuals' && <ResidualChart data={residuals ?? []} />}
         {activeTab === 'Forces' && <ForceChart data={forces ?? []} />}
+        {activeTab === 'Contours' && (
+          <div>
+            {job.status !== 'completed' ? (
+              <div className="flex flex-col items-center justify-center py-12">
+                <Image className="h-8 w-8 text-[hsl(var(--muted-foreground))] mb-3" />
+                <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                  Contour images will be available once the job completes.
+                </p>
+              </div>
+            ) : (() => {
+              const contourFiles = (files ?? []).filter((f) => f.file_type === 'contour_image');
+              if (contourFiles.length === 0) {
+                return (
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <Image className="h-8 w-8 text-[hsl(var(--muted-foreground))] mb-3" />
+                    <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                      No contour images found.
+                    </p>
+                  </div>
+                );
+              }
+              return (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {contourFiles.map((f) => (
+                    <ContourCard key={f.id} file={f} jobId={id!} />
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+        )}
         {activeTab === 'Files' && (
           <div>
             {job.status !== 'completed' ? (
@@ -172,7 +275,11 @@ export function JobDetailPage() {
                     className="flex items-center gap-4 rounded-lg bg-[hsl(var(--background))] px-4 py-3 transition-colors hover:bg-[hsl(var(--muted))]"
                   >
                     <div className="rounded-lg bg-[hsl(var(--primary)/0.1)] p-2">
-                      <FileText className="h-4 w-4 text-[hsl(var(--primary))]" />
+                      {f.file_type === 'contour_image' ? (
+                        <Image className="h-4 w-4 text-[hsl(var(--primary))]" />
+                      ) : (
+                        <FileText className="h-4 w-4 text-[hsl(var(--primary))]" />
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{f.filename}</p>

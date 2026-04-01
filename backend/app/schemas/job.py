@@ -75,21 +75,25 @@ class TurbulenceConfig(BaseModel):
 
 
 class InletBC(BaseModel):
+    zone_name: str = "inlet"
     velocity: float = 20.0
     turbulent_intensity: float = 0.01
     turbulent_viscosity_ratio: float = 10.0
 
 
 class OutletBC(BaseModel):
+    zone_name: str = "outlet"
     gauge_pressure: float = 0.0
 
 
 class GroundBC(BaseModel):
+    zone_name: str = "ground"
     type: str = "moving-wall"
     velocity: float = 20.0
 
 
 class SymmetryBC(BaseModel):
+    zone_names: list[str] = ["symmetry-top", "symmetry-side-1", "symmetry-side-2"]
     type: str = "symmetry"
 
 

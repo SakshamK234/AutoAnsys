@@ -68,6 +68,10 @@ yes
 ; PHASE 2: SOLVER SETUP
 ; ══════════════════════════════════════════════════════════════════════
 
+; ── Print zone list for debugging ─────────────────────────────────────
+(%py-exec "print('=== ZONE LIST ===')")
+/define/boundary-conditions/list-zones
+
 ; ── Turbulence Model ──────────────────────────────────────────────────
 {% if solver.turbulence.model == "k-omega-sst" %}
 /define/models/viscous kw-sst yes
@@ -78,53 +82,35 @@ yes
 {% endif %}
 
 ; ── Boundary Conditions ───────────────────────────────────────────────
-; Inlet — velocity-inlet
-/define/boundary-conditions/velocity-inlet inlet
-no
-yes
-yes
-no
-{{ solver.boundary_conditions.inlet.velocity }}
-no
-0
-no
-{{ solver.boundary_conditions.inlet.turbulent_intensity }}
-no
-{{ solver.boundary_conditions.inlet.turbulent_viscosity_ratio }}
+; In 2025R1: first assign zone types, then set parameters.
+; The wind tunnel capping step creates zones named by the workflow.
+; Zone names are configurable — defaults: inlet, outlet, ground, symmetry-*
 
-; Outlet — pressure-outlet
-/define/boundary-conditions/pressure-outlet outlet
-yes
-no
-{{ solver.boundary_conditions.outlet.gauge_pressure }}
-no
-yes
-no
-no
-no
-yes
-5
-no
-10
-no
-yes
-no
-no
-1
+{% set inlet_zone = solver.boundary_conditions.inlet.zone_name | default("inlet") %}
+{% set outlet_zone = solver.boundary_conditions.outlet.zone_name | default("outlet") %}
+{% set ground_zone = solver.boundary_conditions.ground.zone_name | default("ground") %}
+{% set symmetry_zones = solver.boundary_conditions.symmetry.zone_names | default(["symmetry-top", "symmetry-side-1", "symmetry-side-2"]) %}
 
-; Ground — moving wall (match freestream velocity)
-/define/boundary-conditions/wall ground
-0
-no
-0
-no
-yes
-motion-bc-moving
-yes
-no
-no
-yes
-{{ solver.boundary_conditions.ground.velocity }} 0 0
+; Set zone types
+/define/boundary-conditions/zone-type {{ inlet_zone }} velocity-inlet
+/define/boundary-conditions/zone-type {{ outlet_zone }} pressure-outlet
+{% if solver.boundary_conditions.ground.type | default("moving-wall") != "none" %}
+/define/boundary-conditions/zone-type {{ ground_zone }} wall
+{% endif %}
+{% for sym_zone in symmetry_zones %}
+/define/boundary-conditions/zone-type {{ sym_zone }} symmetry
+{% endfor %}
+
+; Inlet — velocity magnitude, turbulence intensity & viscosity ratio
+/define/boundary-conditions/set/velocity-inlet {{ inlet_zone }} () vmag no {{ solver.boundary_conditions.inlet.velocity }} ke-spec no {{ solver.boundary_conditions.inlet.turbulent_intensity }} {{ solver.boundary_conditions.inlet.turbulent_viscosity_ratio }} quit
+
+; Outlet — gauge pressure
+/define/boundary-conditions/set/pressure-outlet {{ outlet_zone }} () pgauge no {{ solver.boundary_conditions.outlet.gauge_pressure }} quit
+
+; Ground — moving wall matching freestream
+{% if solver.boundary_conditions.ground.type | default("moving-wall") == "moving-wall" %}
+/define/boundary-conditions/set/wall {{ ground_zone }} () shear-bc no no motion-bc-moving no yes yes {{ solver.boundary_conditions.ground.velocity }} 0 0 quit
+{% endif %}
 
 ; ── Solution Methods ──────────────────────────────────────────────────
 /solve/set/p-v-coupling {{ solver.solution_methods.scheme | default("Coupled") }}
@@ -164,6 +150,37 @@ yes
 {% if solver.data_export.case_data | default(true) %}
 /file/write-case-data "{{ workspace }}/result.cas.h5"
 {% endif %}
+
+; ══════════════════════════════════════════════════════════════════════
+; PHASE 4: POST-PROCESSING — Contour Images
+; ══════════════════════════════════════════════════════════════════════
+
+; ── Picture driver setup (offscreen PNG for batch mode) ─────────────
+/display/set/picture/driver png
+/display/set/picture/x-resolution 1920
+/display/set/picture/y-resolution 1080
+/display/set/picture/use-window-resolution no
+/display/set/picture/color-mode color
+
+; ── Velocity magnitude contour ──────────────────────────────────────
+/display/set/contours/filled? yes
+/display/set/contours/node-values? yes
+/display/set/contours/surfaces {{ inlet_zone }} {{ outlet_zone }} {{ ground_zone }} ()
+/display/contour velocity velocity-magnitude
+/display/save-picture "{{ workspace }}/contour_velocity.png"
+
+; ── Static pressure contour ─────────────────────────────────────────
+/display/contour pressure static-pressure
+/display/save-picture "{{ workspace }}/contour_pressure.png"
+
+; ── Total pressure contour ──────────────────────────────────────────
+/display/contour pressure total-pressure
+/display/save-picture "{{ workspace }}/contour_total_pressure.png"
+
+; ── Wall shear stress (on body surfaces only) ───────────────────────
+/display/set/contours/surfaces * ()
+/display/contour wall-fluxes wall-shear-stress
+/display/save-picture "{{ workspace }}/contour_wall_shear.png"
 
 ; ── Done ──────────────────────────────────────────────────────────────
 /exit yes

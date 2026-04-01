@@ -96,6 +96,23 @@ export function SolverConfigStep({ config, setConfig }: SolverConfigStepProps) {
         </div>
       </section>
 
+      {/* Zone Names (Advanced) */}
+      <section>
+        <details>
+          <summary className="font-medium mb-3 text-[hsl(var(--primary))] cursor-pointer">Zone Names (Advanced)</summary>
+          <p className="text-xs text-[hsl(var(--muted-foreground))] mb-3">
+            Zone names are created by the Fluent Wind Tunnel capping step. The defaults work for most FSAE geometries.
+            Only change these if your geometry produces different zone names.
+          </p>
+          <div className="grid grid-cols-2 gap-4">
+            <div><label className="block text-xs font-medium mb-1">Inlet Zone Name</label><input type="text" value={config.boundary_conditions.inlet.zone_name} onChange={(e) => update('boundary_conditions.inlet.zone_name', e.target.value)} className="w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm" /></div>
+            <div><label className="block text-xs font-medium mb-1">Outlet Zone Name</label><input type="text" value={config.boundary_conditions.outlet.zone_name} onChange={(e) => update('boundary_conditions.outlet.zone_name', e.target.value)} className="w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm" /></div>
+            <div><label className="block text-xs font-medium mb-1">Ground Zone Name</label><input type="text" value={config.boundary_conditions.ground.zone_name} onChange={(e) => update('boundary_conditions.ground.zone_name', e.target.value)} className="w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm" /></div>
+            <div><label className="block text-xs font-medium mb-1">Symmetry Zone Names (comma-separated)</label><input type="text" value={config.boundary_conditions.symmetry.zone_names.join(', ')} onChange={(e) => update('boundary_conditions.symmetry.zone_names', e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean))} className="w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm" /></div>
+          </div>
+        </details>
+      </section>
+
       {/* Solution Methods */}
       <section>
         <h4 className="font-medium mb-3 text-[hsl(var(--primary))]">Solution Methods</h4>

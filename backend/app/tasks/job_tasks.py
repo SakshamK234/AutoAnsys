@@ -120,14 +120,10 @@ def submit_job_to_cluster(self, job_id: str) -> dict:
             from app.journal.generator import JournalGenerator
             gen = JournalGenerator()
 
-            mesh_jou = gen.generate_mesh_journal(
-                job.config["mesh"],
+            combined_jou = gen.generate_combined_journal(
+                mesh_config=job.config["mesh"],
+                solver_config=job.config["solver"],
                 geometry_file=f"{workspace}/{geom_filename}",
-                output_mesh=f"{workspace}/result.msh.h5",
-            )
-            solver_jou = gen.generate_solver_journal(
-                job.config["solver"],
-                mesh_file=f"{workspace}/result.msh.h5",
                 workspace=workspace,
             )
             slurm_sh = gen.generate_slurm_script(
@@ -143,8 +139,7 @@ def submit_job_to_cluster(self, job_id: str) -> dict:
             sftp = SFTPManager(sftp_client)
 
             sftp.upload_file(local_geom_path, f"{workspace}/{geom_filename}")
-            sftp.upload_string(mesh_jou, f"{workspace}/mesh_watertight.jou")
-            sftp.upload_string(solver_jou, f"{workspace}/solver.jou")
+            sftp.upload_string(combined_jou, f"{workspace}/autoansys.jou")
             sftp.upload_string(slurm_sh, f"{workspace}/run.sh")
             sftp.close()
 
@@ -300,6 +295,30 @@ def _download_mock_results(db, job: Job, s3) -> int:
     ))
     files_created += 1
 
+    # Generate mock contour images
+    for contour_name, label in [
+        ("contour_velocity.png", "Velocity Magnitude"),
+        ("contour_pressure.png", "Static Pressure"),
+        ("contour_total_pressure.png", "Total Pressure"),
+        ("contour_wall_shear.png", "Wall Shear Stress"),
+    ]:
+        img_bytes = _generate_mock_contour_image(label)
+        img_key = f"results/{job.id}/{contour_name}"
+        s3.put_object(
+            Bucket=settings.S3_BUCKET,
+            Key=img_key,
+            Body=img_bytes,
+            ContentType="image/png",
+        )
+        db.add(ResultFile(
+            job_id=job.id,
+            filename=contour_name,
+            file_type="contour_image",
+            s3_key=img_key,
+            file_size=len(img_bytes),
+        ))
+        files_created += 1
+
     return files_created
 
 
@@ -318,6 +337,10 @@ def _download_real_results(db, job: Job, s3) -> int:
         "residuals.csv": "residuals_csv",
         "result.cas.h5": "case_data",
         "result.msh.h5": "mesh_data",
+        "contour_velocity.png": "contour_image",
+        "contour_pressure.png": "contour_image",
+        "contour_total_pressure.png": "contour_image",
+        "contour_wall_shear.png": "contour_image",
     }
 
     try:
@@ -399,3 +422,71 @@ def _generate_mock_residuals_csv(iterations: int) -> str:
         ])
 
     return buf.getvalue()
+
+
+def _generate_mock_contour_image(label: str) -> bytes:
+    """Generate a simple placeholder PNG contour image for mock mode.
+
+    Creates a minimal valid PNG with a colored gradient.
+    Uses only the standard library (no PIL/matplotlib dependency).
+    """
+    import struct
+    import zlib
+
+    width, height = 640, 400
+
+    # Color maps for different contour types
+    color_maps = {
+        "Velocity Magnitude": ((0, 0, 180), (0, 200, 0), (220, 0, 0)),
+        "Static Pressure": ((0, 0, 220), (0, 180, 180), (220, 220, 0)),
+        "Total Pressure": ((20, 0, 120), (0, 160, 160), (240, 200, 0)),
+        "Wall Shear Stress": ((0, 60, 0), (0, 200, 0), (255, 255, 0)),
+    }
+    c_low, c_mid, c_high = color_maps.get(
+        label, ((0, 0, 200), (0, 200, 0), (200, 0, 0))
+    )
+
+    def lerp_color(t: float) -> tuple:
+        if t < 0.5:
+            s = t * 2
+            return (
+                int(c_low[0] + (c_mid[0] - c_low[0]) * s),
+                int(c_low[1] + (c_mid[1] - c_low[1]) * s),
+                int(c_low[2] + (c_mid[2] - c_low[2]) * s),
+            )
+        else:
+            s = (t - 0.5) * 2
+            return (
+                int(c_mid[0] + (c_high[0] - c_mid[0]) * s),
+                int(c_mid[1] + (c_high[1] - c_mid[1]) * s),
+                int(c_mid[2] + (c_high[2] - c_mid[2]) * s),
+            )
+
+    # Build raw pixel rows (filter byte 0 + RGB for each pixel)
+    raw = bytearray()
+    for y in range(height):
+        raw.append(0)  # PNG filter: None
+        for x in range(width):
+            t = x / width
+            noise = math.sin(x * 0.05) * math.cos(y * 0.08) * 0.15
+            t = max(0.0, min(1.0, t + noise))
+            r, g, b = lerp_color(t)
+            raw.extend((r, g, b))
+
+    # Encode PNG
+    def _make_chunk(chunk_type: bytes, data: bytes) -> bytes:
+        chunk = chunk_type + data
+        return (
+            struct.pack(">I", len(data))
+            + chunk
+            + struct.pack(">I", zlib.crc32(chunk) & 0xFFFFFFFF)
+        )
+
+    ihdr_data = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    compressed = zlib.compress(bytes(raw), 6)
+
+    png = b"\x89PNG\r\n\x1a\n"
+    png += _make_chunk(b"IHDR", ihdr_data)
+    png += _make_chunk(b"IDAT", compressed)
+    png += _make_chunk(b"IEND", b"")
+    return png

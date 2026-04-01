@@ -5,10 +5,10 @@
 ; ── Read Mesh ─────────────────────────────────────────────────────────
 /file/read-mesh "{{ mesh_file }}"
 
-; ── General Settings ──────────────────────────────────────────────────
-; Scale mesh if geometry was in mm (mesh already in SI from mesher)
+; ── Print all zones (diagnostic — check slurm output for names) ──────
+/report/summary yes
 
-; ── Turbulence Model ──────────────────────────────────────────────────
+; ── Turbulence Model ─────────────────────────────────────────────────
 {% if solver.turbulence.model == "k-omega-sst" %}
 /define/models/viscous kw-sst yes
 {% elif solver.turbulence.model == "k-epsilon-realizable" %}
@@ -17,60 +17,37 @@
 /define/models/viscous spalart-allmaras yes
 {% endif %}
 
-; ── Boundary Conditions ───────────────────────────────────────────────
-; Using TUI with newline-separated prompts for robustness.
-; Zone names depend on the Watertight Geometry capping step output.
-; Adjust zone names (inlet, outlet, ground) if they differ in your mesh.
+; ── Boundary Conditions (via Scheme for error resilience) ────────────
+; ti-menu-load-string won't abort the journal if a zone name is wrong.
+; We try multiple common zone-name patterns from the Watertight Workflow.
 
-; Inlet — velocity-inlet
-/define/boundary-conditions/velocity-inlet inlet
-no
-yes
-yes
-no
-{{ solver.boundary_conditions.inlet.velocity }}
-no
-0
-no
-{{ solver.boundary_conditions.inlet.turbulent_intensity }}
-no
-{{ solver.boundary_conditions.inlet.turbulent_viscosity_ratio }}
+; --- Inlet (velocity-inlet) ---
+{% set v_inlet = solver.boundary_conditions.inlet.velocity %}
+{% set ti = solver.boundary_conditions.inlet.turbulent_intensity | default(0.05) %}
+{% set tvr = solver.boundary_conditions.inlet.turbulent_viscosity_ratio | default(10) %}
+(for-each
+  (lambda (name)
+    (ti-menu-load-string
+      (format #f "/define/boundary-conditions/velocity-inlet ~a no no yes yes no {{ v_inlet }} no 0 no {{ ti }} no {{ tvr }}\n" name)))
+  '("inlet" "velocity-inlet-1" "enclosure-inlet" "wt-inlet" "wt_inlet" "inlet-1"))
 
-; Outlet — pressure-outlet
-/define/boundary-conditions/pressure-outlet outlet
-yes
-no
-{{ solver.boundary_conditions.outlet.gauge_pressure }}
-no
-yes
-no
-no
-no
-yes
-5
-no
-10
-no
-yes
-no
-no
-1
+; --- Outlet (pressure-outlet) ---
+{% set p_out = solver.boundary_conditions.outlet.gauge_pressure | default(0) %}
+(for-each
+  (lambda (name)
+    (ti-menu-load-string
+      (format #f "/define/boundary-conditions/pressure-outlet ~a yes no {{ p_out }} no yes no no no yes 5 no 10 no yes no no 1\n" name)))
+  '("outlet" "pressure-outlet-1" "enclosure-outlet" "wt-outlet" "wt_outlet" "outlet-1"))
 
-; Ground — moving wall (match freestream velocity)
-/define/boundary-conditions/wall ground
-0
-no
-0
-no
-yes
-motion-bc-moving
-yes
-no
-no
-yes
-{{ solver.boundary_conditions.ground.velocity }} 0 0
+; --- Ground — moving wall (freestream velocity along x) ---
+{% set v_ground = solver.boundary_conditions.ground.velocity | default(0) %}
+(for-each
+  (lambda (name)
+    (ti-menu-load-string
+      (format #f "/define/boundary-conditions/wall ~a 0 no 0 no yes motion-bc-moving yes no no yes {{ v_ground }} 0 0\n" name)))
+  '("ground" "wall-enclosure-bottom" "enclosure-bottom" "wt-bottom" "wt_bottom" "floor" "ymin"))
 
-; ── Solution Methods ──────────────────────────────────────────────────
+; ── Solution Methods ─────────────────────────────────────────────────
 /solve/set/p-v-coupling {{ solver.solution_methods.scheme | default("Coupled") }}
 /solve/set/gradient-scheme {{ solver.solution_methods.gradient | default("Least Squares Cell Based") }}
 /solve/set/discretization-scheme/pressure {{ solver.solution_methods.pressure | default("Second Order") }}

@@ -45,11 +45,11 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
               <div className="text-center">
                 <ArrowUpFromLine className="mx-auto h-6 w-6 text-[hsl(var(--muted-foreground))] mb-2" />
                 <p className="text-sm font-medium">{file ? file.name : 'Choose a file'}</p>
-                <p className="text-xs text-[hsl(var(--muted-foreground))]">.stp, .step, .igs, .iges</p>
+                <p className="text-xs text-[hsl(var(--muted-foreground))]">.stp, .step, .igs, .iges, .dsco</p>
               </div>
               <input
                 type="file"
-                accept=".stp,.step,.igs,.iges"
+                accept=".stp,.step,.igs,.iges,.dsco"
                 className="hidden"
                 onChange={(e) => setFile(e.target.files?.[0] || null)}
               />
@@ -145,7 +145,7 @@ export function GeometriesPage() {
             </div>
             <p className="text-lg font-semibold">No geometries uploaded yet</p>
             <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1 max-w-xs text-center">
-              Upload .stp or .igs CAD files to use them in your simulations
+              Upload .stp, .igs, or .dsco CAD files to use them in your simulations
             </p>
             <button
               onClick={() => setUploadOpen(true)}

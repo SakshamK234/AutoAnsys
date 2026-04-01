@@ -128,21 +128,25 @@ export interface TurbulenceConfig {
 }
 
 export interface InletBC {
+  zone_name: string;
   velocity: number;
   turbulent_intensity: number;
   turbulent_viscosity_ratio: number;
 }
 
 export interface OutletBC {
+  zone_name: string;
   gauge_pressure: number;
 }
 
 export interface GroundBC {
+  zone_name: string;
   type: string;
   velocity: number;
 }
 
 export interface SymmetryBC {
+  zone_names: string[];
   type: string;
 }
 
