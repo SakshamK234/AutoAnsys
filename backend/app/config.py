@@ -34,6 +34,14 @@ class Settings(BaseSettings):
     # ── ANSYS / Fluent ────────────────────────────────────────────────────
     FLUENT_MODULE: str = "ansys/2024r2"
 
+    # ── FEA ────────────────────────────────────────────────────────────────
+    FEA_SOLVER: str = "calculix"
+    FEA_SOLVER_MODULE: str = "calculix/2.21"
+    FEA_WORK_DIR: str = "/scratch/fea/jobs"
+    FEA_RESULTS_DIR: str = "/scratch/fea/results"
+    FEA_DEFAULT_PARTITION: str = "standard"
+    FEA_MAX_NODES: int = 4
+
     # ── Polling ───────────────────────────────────────────────────────────
     JOB_POLL_INTERVAL: int = 30
 

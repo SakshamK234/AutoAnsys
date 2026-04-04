@@ -10,6 +10,9 @@ import { JobsPage } from '@/pages/jobs';
 import { JobDetailPage } from '@/pages/job-detail';
 import { GeometriesPage } from '@/pages/geometries';
 import { TemplatesPage } from '@/pages/templates';
+import { FeaNewPage } from '@/pages/fea-new';
+import { FeaJobsPage } from '@/pages/fea-jobs';
+import { FeaJobDetailPage } from '@/pages/fea-job-detail';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -45,6 +48,9 @@ export default function App() {
               <Route path="/jobs/:id" element={<JobDetailPage />} />
               <Route path="/geometries" element={<GeometriesPage />} />
               <Route path="/templates" element={<TemplatesPage />} />
+              <Route path="/fea/new" element={<FeaNewPage />} />
+              <Route path="/fea/jobs" element={<FeaJobsPage />} />
+              <Route path="/fea/jobs/:id" element={<FeaJobDetailPage />} />
             </Route>
           </Routes>
         </AppInit>

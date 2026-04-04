@@ -9,6 +9,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/jobs': 'Simulations',
   '/geometries': 'Geometry Library',
   '/templates': 'Templates',
+  '/fea/new': 'New FEA Analysis',
+  '/fea/jobs': 'FEA Jobs',
 };
 
 export function Header() {
@@ -22,7 +24,8 @@ export function Header() {
   }, [dark]);
 
   const displayName = isGuest ? 'Guest' : user?.name || user?.email || 'User';
-  const pageTitle = PAGE_TITLES[location.pathname] || 'AutoAnsys';
+  const pageTitle = PAGE_TITLES[location.pathname]
+    || (location.pathname.startsWith('/fea/jobs/') ? 'FEA Job Detail' : 'AutoAnsys');
 
   return (
     <header className="flex h-14 items-center gap-4 border-b border-[hsl(var(--border))] bg-[hsl(var(--card))] px-6">

@@ -6,6 +6,7 @@ import {
   Box,
   FileText,
   Wind,
+  Wrench,
   Settings,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -14,6 +15,7 @@ const mainNav = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/new-job', icon: Plus, label: 'New Simulation' },
   { to: '/jobs', icon: List, label: 'Jobs' },
+  { to: '/fea/jobs', icon: Wrench, label: 'FEA Jobs' },
 ];
 
 const libraryNav = [

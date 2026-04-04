@@ -1,14 +1,12 @@
 import { useNavigate } from 'react-router-dom';
-import { Plus, Upload, BarChart3, Wrench, ArrowRight } from 'lucide-react';
+import { Plus, Box, ArrowRight } from 'lucide-react';
 
-export function QuickActions() {
+export function FeaQuickActions() {
   const navigate = useNavigate();
 
   const actions = [
-    { icon: Plus, label: 'New Simulation', description: 'Start a CFD run', to: '/new-job' },
-    { icon: Wrench, label: 'New FEA Analysis', description: 'Static structural', to: '/fea/new' },
-    { icon: Upload, label: 'Upload Geometry', description: 'Add CAD file', to: '/geometries' },
-    { icon: BarChart3, label: 'View Results', description: 'Completed sims', to: '/jobs' },
+    { icon: Plus, label: 'New FEA Analysis', description: 'Static structural', to: '/fea/new' },
+    { icon: Box, label: 'Geometry Library', description: 'Shared CAD files', to: '/geometries' },
   ];
 
   return (

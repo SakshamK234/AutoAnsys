@@ -49,3 +49,6 @@ class User(Base):
     templates: Mapped[list["SimulationTemplate"]] = relationship(  # noqa: F821
         back_populates="owner", cascade="all, delete-orphan"
     )
+    fea_jobs: Mapped[list["FEAJob"]] = relationship(  # noqa: F821
+        back_populates="owner", cascade="all, delete-orphan"
+    )
