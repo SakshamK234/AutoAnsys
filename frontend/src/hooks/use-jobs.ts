@@ -36,11 +36,25 @@ export function useJob(id: string | undefined) {
     enabled: !!id,
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      // Stop polling once job reaches a terminal state
       if (status === 'completed' || status === 'failed' || status === 'cancelled') {
         return false;
       }
       return 5000;
+    },
+  });
+}
+
+export function useSyncJobStatus() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await api.post<Job>(`/jobs/${id}/sync`);
+      return res.data;
+    },
+    onSuccess: (job) => {
+      queryClient.setQueryData(['jobs', job.id], job);
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
     },
   });
 }

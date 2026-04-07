@@ -52,7 +52,7 @@ export function ResourceConfigStep({ config, setConfig }: ResourceConfigStepProp
         <div>
           <label className="block text-xs font-medium mb-1">SLURM Account</label>
           <input type="text" value={config.account} onChange={(e) => setConfig({ ...config, account: e.target.value })} className={inputClass} />
-          <p className="mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">ARC allocation account name</p>
+          <p className="mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">SLURM project / allocation (see your HPC documentation)</p>
         </div>
       </div>
 

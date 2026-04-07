@@ -162,25 +162,50 @@ yes
 /display/set/picture/use-window-resolution no
 /display/set/picture/color-mode color
 
-; ── Velocity magnitude contour ──────────────────────────────────────
+; ── Create mid-plane cross-section for flow field visualization ─────
+; Z=0 symmetry plane gives a side-view slice through the domain
+(%py-exec "solver.results.surfaces.iso_surface['midplane-z'] = {'field': 'z-coordinate', 'iso_values': [0.0]}")
+
+; ── Velocity magnitude contour (boundary surfaces) ──────────────────
 /display/set/contours/filled? yes
 /display/set/contours/node-values? yes
 /display/set/contours/surfaces {{ inlet_zone }} {{ outlet_zone }} {{ ground_zone }} ()
 /display/contour velocity velocity-magnitude
 /display/save-picture "{{ workspace }}/contour_velocity.png"
 
-; ── Static pressure contour ─────────────────────────────────────────
+; ── Velocity magnitude on mid-plane (flow field cross-section) ──────
+/display/set/contours/surfaces midplane-z ()
+/display/contour velocity velocity-magnitude
+/display/save-picture "{{ workspace }}/contour_velocity_midplane.png"
+
+; ── Static pressure contour (boundary surfaces) ────────────────────
+/display/set/contours/surfaces {{ inlet_zone }} {{ outlet_zone }} {{ ground_zone }} ()
 /display/contour pressure static-pressure
 /display/save-picture "{{ workspace }}/contour_pressure.png"
 
+; ── Static pressure on mid-plane ───────────────────────────────────
+/display/set/contours/surfaces midplane-z ()
+/display/contour pressure static-pressure
+/display/save-picture "{{ workspace }}/contour_pressure_midplane.png"
+
 ; ── Total pressure contour ──────────────────────────────────────────
+/display/set/contours/surfaces {{ inlet_zone }} {{ outlet_zone }} {{ ground_zone }} ()
 /display/contour pressure total-pressure
 /display/save-picture "{{ workspace }}/contour_total_pressure.png"
 
-; ── Wall shear stress (on body surfaces only) ───────────────────────
+; ── Pressure coefficient on body surfaces ───────────────────────────
 /display/set/contours/surfaces * ()
+/display/contour pressure pressure-coefficient
+/display/save-picture "{{ workspace }}/contour_cp.png"
+
+; ── Wall shear stress (on body surfaces only) ───────────────────────
 /display/contour wall-fluxes wall-shear-stress
 /display/save-picture "{{ workspace }}/contour_wall_shear.png"
+
+; ── Turbulent kinetic energy on mid-plane ──────────────────────────
+/display/set/contours/surfaces midplane-z ()
+/display/contour turb-kinetic-energy k
+/display/save-picture "{{ workspace }}/contour_tke_midplane.png"
 
 ; ── Done ──────────────────────────────────────────────────────────────
 /exit yes

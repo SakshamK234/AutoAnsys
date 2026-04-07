@@ -18,6 +18,8 @@ from app.schemas.job import (
     JobResponse,
     JobStatusResponse,
     ResidualData,
+    SweepCreate,
+    SweepResponse,
 )
 from app.services.job_service import JobService
 
@@ -176,6 +178,26 @@ async def submit_job(
     service = JobService(db)
     job = await service.submit_job(user=current_user, job_id=job_id)
     return job
+
+
+@router.post("/{job_id}/sync", response_model=JobResponse)
+async def sync_job_status(
+    job_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Check the job's real status on the cluster and update the DB.
+
+    Useful when a job was cancelled via terminal (scancel) or the OOD
+    session expired — the periodic poller may not have picked it up yet.
+    """
+    service = JobService(db)
+    job = await service.sync_job_status(user=current_user, job_id=job_id)
+    group_name = None
+    if job.group_id:
+        gr = await db.execute(select(Group.name).where(Group.id == job.group_id))
+        group_name = gr.scalar_one_or_none()
+    return _job_to_response(job, group_name)
 
 
 @router.post("/{job_id}/cancel", response_model=JobResponse)

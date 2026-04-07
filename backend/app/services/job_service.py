@@ -131,6 +131,112 @@ class JobService:
         logger.info("Job %s enqueued for async cluster submission", job.id)
         return job
 
+    # ── Sync Status ───────────────────────────────────────────────────────
+
+    async def sync_job_status(self, user: User, job_id: uuid.UUID) -> Job:
+        """Check the cluster for the real status and update the DB immediately.
+
+        For batch jobs: queries sacct.
+        For session jobs: checks if PID is still alive.
+        Returns the (possibly updated) job.
+        """
+        job = await self._get_user_job(user, job_id)
+
+        # Only sync jobs in active states
+        if job.status not in (JobStatus.queued, JobStatus.running):
+            return job
+
+        if not job.slurm_job_id:
+            return job
+
+        is_session = job.slurm_job_id.startswith("session:")
+
+        if is_session:
+            new_status = self._sync_session_job(job)
+        else:
+            new_status = self._sync_batch_job(job)
+
+        if new_status and new_status != job.status:
+            job.status = new_status
+            if new_status == JobStatus.running and job.started_at is None:
+                job.started_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            if new_status in (JobStatus.completed, JobStatus.failed, JobStatus.cancelled):
+                job.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                if new_status == JobStatus.completed:
+                    from app.tasks.job_tasks import download_results
+                    download_results.delay(str(job.id))
+            await self.db.flush()
+            await self.db.refresh(job)
+
+        return job
+
+    @staticmethod
+    def _sync_batch_job(job: Job) -> "JobStatus | None":
+        """Query sacct for the real SLURM state of a batch job."""
+        from app.tasks.job_tasks import _normalize_slurm_state, _SLURM_STATE_MAP
+
+        ssh = None
+        try:
+            if settings.CLUSTER_MOCK_MODE:
+                from app.cluster.mock import MockSSHManager, MockSlurmManager
+                ssh = MockSSHManager()
+                slurm_mgr = MockSlurmManager(ssh)
+            else:
+                from app.cluster.ssh_manager import SSHManager
+                from app.cluster.slurm import SlurmManager
+                ssh = SSHManager()
+                ssh.connect()
+                slurm_mgr = SlurmManager(ssh)
+
+            status_info = slurm_mgr.get_job_status(job.slurm_job_id)
+            raw_state = status_info.get("state", "UNKNOWN").strip()
+            slurm_state = _normalize_slurm_state(raw_state)
+            return _SLURM_STATE_MAP.get(slurm_state)
+        except Exception:
+            logger.exception("Failed to sync batch job %s", job.id)
+            return None
+        finally:
+            if ssh and not settings.CLUSTER_MOCK_MODE:
+                ssh.close()
+
+    @staticmethod
+    def _sync_session_job(job: Job) -> "JobStatus | None":
+        """Check if the session Fluent process is still alive."""
+        if not job.slurm_job_id or not job.slurm_job_id.startswith("session:"):
+            return None
+        try:
+            rest = job.slurm_job_id[len("session:"):]
+            pid_str, compute_node = rest.split("@", 1)
+            pid = int(pid_str)
+        except (ValueError, IndexError):
+            return None
+
+        session_ssh = None
+        try:
+            if settings.CLUSTER_MOCK_MODE:
+                from app.cluster.mock import MockSessionSSHManager
+                session_ssh = MockSessionSSHManager(compute_node)
+            else:
+                from app.cluster.session import SessionSSHManager
+                session_ssh = SessionSSHManager(compute_node)
+
+            session_ssh.connect()
+
+            if session_ssh.is_pid_alive(pid):
+                return None  # still running
+
+            workspace = job.cluster_workspace or ""
+            out, _, _ = session_ssh.execute_command(
+                f"ls {workspace}/result.cas.h5 2>/dev/null && echo FOUND || echo NOTFOUND"
+            )
+            return JobStatus.completed if "FOUND" in out else JobStatus.failed
+        except Exception:
+            logger.exception("Failed to sync session job %s", job.id)
+            return None
+        finally:
+            if session_ssh:
+                session_ssh.close()
+
     # ── Cancel ────────────────────────────────────────────────────────────
 
     async def cancel_job(self, user: User, job_id: uuid.UUID) -> Job:

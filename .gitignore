@@ -35,7 +35,3 @@ minio_data/
 .coverage
 htmlcov/
 .pytest_cache/
-
-# Alembic
-alembic/versions/*.py
-!alembic/versions/.gitkeep

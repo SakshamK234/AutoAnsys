@@ -298,9 +298,13 @@ def _download_mock_results(db, job: Job, s3) -> int:
     # Generate mock contour images
     for contour_name, label in [
         ("contour_velocity.png", "Velocity Magnitude"),
+        ("contour_velocity_midplane.png", "Velocity (Mid-plane)"),
         ("contour_pressure.png", "Static Pressure"),
+        ("contour_pressure_midplane.png", "Pressure (Mid-plane)"),
         ("contour_total_pressure.png", "Total Pressure"),
+        ("contour_cp.png", "Pressure Coefficient"),
         ("contour_wall_shear.png", "Wall Shear Stress"),
+        ("contour_tke_midplane.png", "TKE (Mid-plane)"),
     ]:
         img_bytes = _generate_mock_contour_image(label)
         img_key = f"results/{job.id}/{contour_name}"
@@ -338,9 +342,13 @@ def _download_real_results(db, job: Job, s3) -> int:
         "result.cas.h5": "case_data",
         "result.msh.h5": "mesh_data",
         "contour_velocity.png": "contour_image",
+        "contour_velocity_midplane.png": "contour_image",
         "contour_pressure.png": "contour_image",
+        "contour_pressure_midplane.png": "contour_image",
         "contour_total_pressure.png": "contour_image",
+        "contour_cp.png": "contour_image",
         "contour_wall_shear.png": "contour_image",
+        "contour_tke_midplane.png": "contour_image",
     }
 
     try:

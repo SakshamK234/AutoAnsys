@@ -145,7 +145,7 @@ class SlurmConfig(BaseModel):
     memory_gb: int = 243
     walltime_hours: int = 24
     partition: str = "normal_q"
-    account: str = "fsae"
+    account: str = "your_slurm_account"
     job_name: str = "autoansys_cfd"
 
 
@@ -221,3 +221,29 @@ class ResultFileResponse(BaseModel):
     s3_key: str
     file_size: int
     created_at: datetime
+
+
+# ── Parametric Sweep ────────────────────────────────────────────────────
+
+
+class SweepParameter(BaseModel):
+    """Defines a single parameter to sweep over."""
+    path: list[str]  # e.g. ["solver", "boundary_conditions", "inlet", "velocity"]
+    values: list[float | int | str]  # e.g. [15, 20, 25, 30]
+
+
+class SweepCreate(BaseModel):
+    """Create a parametric sweep: one base config + parameter variations."""
+    geometry_id: uuid.UUID
+    base_name: str  # e.g. "Wing Sweep"
+    group_id: uuid.UUID | None = None
+    mesh_config: MeshConfig = Field(default_factory=MeshConfig)
+    solver_config: SolverConfig = Field(default_factory=SolverConfig)
+    slurm_config: SlurmConfig = Field(default_factory=SlurmConfig)
+    sweep_param: SweepParameter
+    auto_submit: bool = False  # If true, submit all jobs after creation
+
+
+class SweepResponse(BaseModel):
+    jobs: list[JobResponse]
+    sweep_param: SweepParameter

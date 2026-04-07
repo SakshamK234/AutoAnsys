@@ -166,6 +166,6 @@ export const DEFAULT_SLURM_CONFIG: SlurmConfig = {
   memory_gb: 243,
   walltime_hours: 24,
   partition: 'normal_q',
-  account: 'fsae',
+  account: 'your_slurm_account',
   job_name: 'autoansys_cfd',
 };

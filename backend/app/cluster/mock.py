@@ -79,6 +79,9 @@ class MockSSHManager:
 class MockSlurmManager:
     """Drop-in replacement for SlurmManager that returns mock data."""
 
+    # Class-level set of cancelled job IDs so cancellations persist across instances
+    _cancelled_jobs: set[str] = set()
+
     def __init__(self, ssh: MockSSHManager) -> None:
         self.ssh = ssh
 
@@ -88,6 +91,14 @@ class MockSlurmManager:
         return mock_id
 
     def get_job_status(self, job_id: str) -> dict:
+        if job_id in self._cancelled_jobs:
+            return {
+                "state": "CANCELLED",
+                "start_time": None,
+                "end_time": None,
+                "elapsed": "00:00:00",
+                "exit_code": "0:0",
+            }
         return {
             "state": "COMPLETED",
             "start_time": None,
@@ -97,6 +108,7 @@ class MockSlurmManager:
         }
 
     def cancel_job(self, job_id: str) -> None:
+        self._cancelled_jobs.add(job_id)
         logger.info("[MOCK SLURM] Cancelled job %s", job_id)
 
     def get_queue(self) -> list[dict]:

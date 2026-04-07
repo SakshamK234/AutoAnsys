@@ -1,4 +1,5 @@
 #!/bin/bash
+# Submit from the cluster after replacing your_netid / your_slurm_account / partition as needed.
 #SBATCH --job-name=autoansys_diag
 #SBATCH --nodes=1
 #SBATCH --ntasks=4
@@ -6,11 +7,11 @@
 #SBATCH --mem=16G
 #SBATCH --time=00:15:00
 #SBATCH --partition=normal_q
-#SBATCH --account=fsae
-#SBATCH --output=/scratch/sakshamkumar/autoansys/diagnostic/launch-%j.out
-#SBATCH --error=/scratch/sakshamkumar/autoansys/diagnostic/launch-%j.err
+#SBATCH --account=your_slurm_account
+#SBATCH --output=/scratch/your_netid/autoansys/diagnostic/launch-%j.out
+#SBATCH --error=/scratch/your_netid/autoansys/diagnostic/launch-%j.err
 
-cd /scratch/sakshamkumar/autoansys/diagnostic
+cd /scratch/your_netid/autoansys/diagnostic
 module load ANSYS/2025R1
 
 echo "=== Test 1: fluent meshing 3ddp (current, broken) ==="

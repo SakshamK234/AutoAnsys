@@ -24,13 +24,13 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
-    # ── HPC Cluster ───────────────────────────────────────────────────────
-    CLUSTER_HOST: str = "tinkercliffs1.arc.vt.edu"
+    # ── HPC Cluster (override all via .env — defaults are public-repo placeholders)
+    CLUSTER_HOST: str = "cluster-login.example.edu"
     CLUSTER_PORT: int = 22
-    CLUSTER_USER: str = "sakshamkumar"
-    CLUSTER_KEY_PATH: str = "~/.ssh/arc_autoansys"
-    CLUSTER_WORKSPACE_BASE: str = "/scratch/sakshamkumar/autoansys/jobs"
-    CLUSTER_ACCOUNT: str = "fsae"
+    CLUSTER_USER: str = "your_netid"
+    CLUSTER_KEY_PATH: str = "~/.ssh/id_cluster"
+    CLUSTER_WORKSPACE_BASE: str = "/scratch/your_netid/autoansys/jobs"
+    CLUSTER_ACCOUNT: str = "your_slurm_account"
     CLUSTER_MOCK_MODE: bool = True
 
     # ── ANSYS / Fluent ────────────────────────────────────────────────────

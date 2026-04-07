@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ResidualChart } from '@/components/jobs/residual-chart';
 import { ForceChart } from '@/components/jobs/force-chart';
 import { JobStatusBadge } from '@/components/jobs/job-status-badge';
-import { useJob, useJobForces, useJobResiduals, useCancelJob } from '@/hooks/use-jobs';
+import { useJob, useJobForces, useJobResiduals, useCancelJob, useSyncJobStatus } from '@/hooks/use-jobs';
 import { cn, formatDate, formatFileSize } from '@/lib/utils';
 import { ArrowLeft, XCircle, Download, FileIcon, FileText, Image } from 'lucide-react';
 import api from '@/lib/api';
@@ -103,11 +103,58 @@ function ContourCard({ file, jobId }: { file: ResultFile; jobId: string }) {
 export function JobDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { data: job, isLoading } = useJob(id);
   const { data: forces } = useJobForces(id);
   const { data: residuals } = useJobResiduals(id);
   const cancelJob = useCancelJob();
+  const syncStatus = useSyncJobStatus();
   const [activeTab, setActiveTab] = useState<string>('Overview');
+
+  const isActive = job?.status === 'queued' || job?.status === 'running';
+
+  // WebSocket for live updates on active jobs
+  const ws = useWebSocket(isActive ? id : undefined);
+
+  // When WS reports a terminal status, invalidate queries to refresh data
+  useEffect(() => {
+    if (ws.status && (ws.status === 'completed' || ws.status === 'failed' || ws.status === 'cancelled')) {
+      queryClient.invalidateQueries({ queryKey: ['jobs', id] });
+      queryClient.invalidateQueries({ queryKey: ['jobs', id, 'forces'] });
+      queryClient.invalidateQueries({ queryKey: ['jobs', id, 'residuals'] });
+      queryClient.invalidateQueries({ queryKey: ['files', id] });
+    }
+  }, [ws.status, id, queryClient]);
+
+  // Merge WS live data with API data
+  const mergedResiduals = useMemo(() => {
+    const apiData = residuals ?? [];
+    if (ws.residuals.length === 0) return apiData;
+    // If API data exists, append only new WS points beyond last API iteration
+    const lastApiIter = apiData.length > 0 ? apiData[apiData.length - 1].iteration : 0;
+    const newPoints = ws.residuals.filter((r) => r.iteration > lastApiIter);
+    return [...apiData, ...newPoints];
+  }, [residuals, ws.residuals]);
+
+  const mergedForces = useMemo(() => {
+    const apiData = forces ?? [];
+    if (ws.forces.length === 0) return apiData;
+    const lastApiIter = apiData.length > 0 ? apiData[apiData.length - 1].iteration : 0;
+    const newPoints = ws.forces.filter((f) => f.iteration > lastApiIter);
+    return [...apiData, ...newPoints];
+  }, [forces, ws.forces]);
+
+  // Effective status: prefer WS live status over API for responsiveness
+  const liveStatus = ws.status || job?.status;
+
+  // Auto-sync with cluster every 10s for active jobs (fallback when WS disconnected)
+  useEffect(() => {
+    if (!id || !isActive || ws.connected) return;
+    const interval = setInterval(() => {
+      syncStatus.mutate(id);
+    }, 10_000);
+    return () => clearInterval(interval);
+  }, [id, isActive, ws.connected]);
 
   const { data: files } = useQuery({
     queryKey: ['files', id],
@@ -162,20 +209,38 @@ export function JobDetailPage() {
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold tracking-tight">{job.name}</h1>
-            <JobStatusBadge status={job.status} />
+            <JobStatusBadge status={liveStatus || job.status} />
+            {ws.connected && (
+              <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-500">
+                <Radio className="h-3 w-3 animate-pulse" />
+                Live
+              </span>
+            )}
           </div>
           <p className="font-mono text-xs text-[hsl(var(--muted-foreground))] mt-1">{job.id}</p>
         </div>
-        {canCancel && (
-          <button
-            onClick={() => cancelJob.mutate(job.id)}
-            disabled={cancelJob.isPending}
-            className="flex items-center gap-2 rounded-lg border border-rose-500/30 px-3 py-2 text-xs font-medium text-rose-500 hover:bg-rose-500/10 disabled:opacity-50 transition-colors"
-          >
-            <XCircle className="h-3.5 w-3.5" />
-            Cancel Job
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {canCancel && (
+            <button
+              onClick={() => syncStatus.mutate(job.id)}
+              disabled={syncStatus.isPending}
+              className="flex items-center gap-2 rounded-lg border border-[hsl(var(--border))] px-3 py-2 text-xs font-medium hover:bg-[hsl(var(--accent))] disabled:opacity-50 transition-colors"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5", syncStatus.isPending && "animate-spin")} />
+              Sync Status
+            </button>
+          )}
+          {canCancel && (
+            <button
+              onClick={() => cancelJob.mutate(job.id)}
+              disabled={cancelJob.isPending}
+              className="flex items-center gap-2 rounded-lg border border-rose-500/30 px-3 py-2 text-xs font-medium text-rose-500 hover:bg-rose-500/10 disabled:opacity-50 transition-colors"
+            >
+              <XCircle className="h-3.5 w-3.5" />
+              Cancel Job
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex gap-1 rounded-lg bg-[hsl(var(--muted))] p-1 w-fit">
@@ -218,8 +283,8 @@ export function JobDetailPage() {
             ))}
           </div>
         )}
-        {activeTab === 'Residuals' && <ResidualChart data={residuals ?? []} />}
-        {activeTab === 'Forces' && <ForceChart data={forces ?? []} />}
+        {activeTab === 'Residuals' && <ResidualChart data={mergedResiduals} />}
+        {activeTab === 'Forces' && <ForceChart data={mergedForces} />}
         {activeTab === 'Contours' && (
           <div>
             {job.status !== 'completed' ? (

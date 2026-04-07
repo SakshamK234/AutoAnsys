@@ -1,26 +1,33 @@
 #!/bin/bash
 #SBATCH --job-name={{ slurm.job_name | default("autoansys_cfd") }}
+#SBATCH --account={{ slurm.account | default("your_slurm_account") }}
+#SBATCH --partition={{ slurm.partition | default("normal_q") }}
 #SBATCH --nodes={{ slurm.nodes | default(1) }}
-#SBATCH --ntasks={{ slurm.nodes | default(1) * slurm.cores_per_node | default(128) }}
-#SBATCH --ntasks-per-node={{ slurm.cores_per_node | default(128) }}
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task={{ slurm.cores_per_node | default(128) }}
 #SBATCH --mem={{ slurm.memory_gb | default(243) }}G
 #SBATCH --time={{ "%02d" | format(slurm.walltime_hours | default(12)) }}:00:00
-#SBATCH --partition={{ slurm.partition | default("normal_q") }}
-#SBATCH --account={{ slurm.account | default("fsae") }}
 #SBATCH --output={{ workspace }}/slurm-%j.out
 #SBATCH --error={{ workspace }}/slurm-%j.err
 
+# ===========================================================================
+# AutoAnsys CFD Job — submitted via sbatch on an ARC compute node
+# All computation runs on allocated compute nodes, NEVER on login nodes.
+# ===========================================================================
+
 set -euo pipefail
 
-NCORES=$(( SLURM_NNODES * SLURM_NTASKS_PER_NODE ))
+NCORES=${SLURM_CPUS_PER_TASK:-{{ slurm.cores_per_node | default(128) }}}
 
 echo "=== AutoAnsys Job Start: $(date) ==="
 echo "Job ID:    $SLURM_JOB_ID"
 echo "Node(s):   $SLURM_NODELIST"
-echo "Cores:     $NCORES (${SLURM_NNODES} nodes x ${SLURM_NTASKS_PER_NODE} tasks/node)"
+echo "Cores:     $NCORES"
+echo "Partition: $SLURM_JOB_PARTITION"
 echo "Workspace: {{ workspace }}"
 
 cd {{ workspace }}
+module reset
 module load {{ fluent_module }}
 
 echo "Fluent binary: $(which fluent)"

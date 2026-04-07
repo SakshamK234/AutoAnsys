@@ -65,14 +65,14 @@ services:
       S3_SECRET_KEY: minioadmin
       S3_BUCKET: autoansys
       JWT_SECRET: dev-secret-change-in-production
-      CLUSTER_MOCK_MODE: "false"
-      CLUSTER_HOST: "tinkercliffs1.arc.vt.edu"
-      CLUSTER_PORT: "22"
-      CLUSTER_USER: "sakshamkumar"
-      CLUSTER_KEY_PATH: "/root/.ssh/arc_autoansys"
-      CLUSTER_WORKSPACE_BASE: "/scratch/sakshamkumar/autoansys/jobs"
-      CLUSTER_ACCOUNT: "fsae"
-      FLUENT_MODULE: "ANSYS/2025R1"
+      CLUSTER_MOCK_MODE: "${CLUSTER_MOCK_MODE:-true}"
+      CLUSTER_HOST: "${CLUSTER_HOST:-cluster-login.example.edu}"
+      CLUSTER_PORT: "${CLUSTER_PORT:-22}"
+      CLUSTER_USER: "${CLUSTER_USER:-your_netid}"
+      CLUSTER_KEY_PATH: "${CLUSTER_KEY_PATH:-/root/.ssh/id_cluster}"
+      CLUSTER_WORKSPACE_BASE: "${CLUSTER_WORKSPACE_BASE:-/scratch/your_netid/autoansys/jobs}"
+      CLUSTER_ACCOUNT: "${CLUSTER_ACCOUNT:-your_slurm_account}"
+      FLUENT_MODULE: "${FLUENT_MODULE:-ANSYS/2025R1}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -84,7 +84,8 @@ services:
       - ./backend/app:/app/app
       - ./backend/alembic:/app/alembic
       - ./backend/entrypoint.sh:/app/entrypoint.sh
-      - ~/.ssh/arc_autoansys:/root/.ssh/arc_autoansys:ro
+      # HPC: uncomment and mount your SSH private key; set CLUSTER_KEY_PATH to match (e.g. /root/.ssh/id_cluster)
+      # - ${CLUSTER_SSH_KEY_HOST_PATH:?Set CLUSTER_SSH_KEY_HOST_PATH to your key file}:/root/.ssh/id_cluster:ro
 
   celery-worker:
     build:
@@ -99,17 +100,18 @@ services:
       S3_SECRET_KEY: minioadmin
       S3_BUCKET: autoansys
       JWT_SECRET: dev-secret-change-in-production
-      CLUSTER_MOCK_MODE: "false"
-      CLUSTER_HOST: "tinkercliffs1.arc.vt.edu"
-      CLUSTER_PORT: "22"
-      CLUSTER_USER: "sakshamkumar"
-      CLUSTER_KEY_PATH: "/root/.ssh/arc_autoansys"
-      CLUSTER_WORKSPACE_BASE: "/scratch/sakshamkumar/autoansys/jobs"
-      CLUSTER_ACCOUNT: "fsae"
-      FLUENT_MODULE: "ANSYS/2025R1"
+      CLUSTER_MOCK_MODE: "${CLUSTER_MOCK_MODE:-true}"
+      CLUSTER_HOST: "${CLUSTER_HOST:-cluster-login.example.edu}"
+      CLUSTER_PORT: "${CLUSTER_PORT:-22}"
+      CLUSTER_USER: "${CLUSTER_USER:-your_netid}"
+      CLUSTER_KEY_PATH: "${CLUSTER_KEY_PATH:-/root/.ssh/id_cluster}"
+      CLUSTER_WORKSPACE_BASE: "${CLUSTER_WORKSPACE_BASE:-/scratch/your_netid/autoansys/jobs}"
+      CLUSTER_ACCOUNT: "${CLUSTER_ACCOUNT:-your_slurm_account}"
+      FLUENT_MODULE: "${FLUENT_MODULE:-ANSYS/2025R1}"
     volumes:
       - ./backend/app:/app/app
-      - ~/.ssh/arc_autoansys:/root/.ssh/arc_autoansys:ro
+      # HPC: uncomment and mount your SSH private key (see backend service volumes)
+      # - ${CLUSTER_SSH_KEY_HOST_PATH:?Set CLUSTER_SSH_KEY_HOST_PATH to your key file}:/root/.ssh/id_cluster:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -124,7 +126,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/autoansys
       REDIS_URL: redis://redis:6379/0
-      CLUSTER_MOCK_MODE: "false"
+      CLUSTER_MOCK_MODE: "${CLUSTER_MOCK_MODE:-true}"
     depends_on:
       redis:
         condition: service_healthy
