@@ -1,0 +1,72 @@
+; ════════════════════════════════════════════════════════════════════════
+; SHARED BC + REFERENCE-VALUES BLOCK
+; Included by both solver_from_case.jou.j2 (split workflow) and
+; mesh_watertight.jou.j2 Phase 2 (combined workflow).
+;
+; Each BC list emits one Fluent TUI command per entry. The argument order
+; mirrors the working specialist script (Max Squat full-car) byte-for-byte
+; so reproducing it as a flat journal yields the same setup as the manual
+; /define/boundary-conditions/... typing in the ARC command window.
+; ════════════════════════════════════════════════════════════════════════
+
+; ── Reference Values ──────────────────────────────────────────────────
+/report/reference-values/area {{ solver.reference_values.area_m2 }}
+/report/reference-values/length {{ solver.reference_values.length_m }}
+/report/reference-values/velocity {{ solver.reference_values.velocity_mps }}
+
+; ── Turbulence Model ──────────────────────────────────────────────────
+{% if solver.turbulence.model == "k-omega-sst" %}
+/define/models/viscous/kw-sst? yes
+{% if solver.turbulence.curvature_correction | default(true) %}
+/define/models/viscous/curvature-correction? yes
+{% endif %}
+{% elif solver.turbulence.model == "k-epsilon-realizable" %}
+/define/models/viscous/ke-realizable? yes
+{% elif solver.turbulence.model == "spalart-allmaras" %}
+/define/models/viscous/spalart-allmaras? yes
+{% endif %}
+
+{% set bc = solver.boundary_conditions %}
+
+; ── Velocity inlets ───────────────────────────────────────────────────
+{% for v in bc.velocity_inlets %}
+/define/boundary-conditions/velocity-inlet {{ v.zone_name }} no no yes yes no {{ v.velocity }} no 0. no no yes {{ v.turbulent_intensity_pct }} {{ v.turbulent_viscosity_ratio }}
+{% endfor %}
+
+; ── Rotating walls (wheels) ──────────────────────────────────────────
+; TUI: zone yes motion-bc-moving no no yes yes no no 0. no 0.5 no <ω> <ox> <oy> <oz> <ax> <ay> <az>
+{% for r in bc.rotating_walls %}
+/define/boundary-conditions/zone-type {{ r.zone_name }} wall
+/define/boundary-conditions/wall {{ r.zone_name }} yes motion-bc-moving no no yes yes no no 0. no 0.5 no {{ r.omega_rad_s }} {{ r.origin_x }} {{ r.origin_y }} {{ r.origin_z }} {{ r.axis_x }} {{ r.axis_y }} {{ r.axis_z }}
+{% endfor %}
+
+; ── Translating walls (e.g. moving ground) ───────────────────────────
+; TUI: zone yes motion-bc-moving no no yes no no <vel> <dx> <dy> <dz> no no 0. no 0.5
+{% for t in bc.translating_walls %}
+/define/boundary-conditions/zone-type {{ t.zone_name }} wall
+/define/boundary-conditions/wall {{ t.zone_name }} yes motion-bc-moving no no yes no no {{ t.velocity_mps }} {{ t.direction_x }} {{ t.direction_y }} {{ t.direction_z }} no no 0. no 0.5
+{% endfor %}
+
+; ── Slip / specified-shear walls (tunnel walls, contact patches) ─────
+; TUI: zone no yes shear-bc-spec-shear no no 0. no 0.5 no 0. no 0. no 0.
+{% for s in bc.slip_walls %}
+/define/boundary-conditions/zone-type {{ s.zone_name }} wall
+/define/boundary-conditions/wall {{ s.zone_name }} no yes shear-bc-spec-shear no no 0. no 0.5 no 0. no 0. no 0.
+{% endfor %}
+
+; ── Stationary no-slip walls ─────────────────────────────────────────
+; Default Fluent wall behaviour; we just pin the zone-type explicitly.
+{% for w in bc.stationary_walls %}
+/define/boundary-conditions/zone-type {{ w.zone_name }} wall
+{% endfor %}
+
+; ── Pressure outlets ─────────────────────────────────────────────────
+{% for o in bc.pressure_outlets %}
+/define/boundary-conditions/zone-type {{ o.zone_name }} pressure-outlet
+/define/boundary-conditions/set/pressure-outlet {{ o.zone_name }} () pgauge no {{ o.gauge_pressure }} quit
+{% endfor %}
+
+; ── Symmetry planes ──────────────────────────────────────────────────
+{% for sym in bc.symmetry_planes %}
+/define/boundary-conditions/zone-type {{ sym.zone_name }} symmetry
+{% endfor %}

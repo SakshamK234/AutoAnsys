@@ -16,7 +16,7 @@ from app.models.geometry import Geometry
 from app.models.group import Group, GroupMembership
 from app.models.job import Job, JobStatus
 from app.models.user import User
-from app.schemas.job import JobCreate
+from app.schemas.job import JobCreate, apply_cfd_mode_defaults
 from app.utils.sanitize import sanitize_for_shell, sanitize_path
 
 logger = logging.getLogger(__name__)
@@ -40,7 +40,13 @@ class JobService:
     # ── Create ────────────────────────────────────────────────────────────
 
     async def create_job(self, user: User, data: JobCreate) -> Job:
-        """Validate inputs, persist a draft job, and store the full config."""
+        """Validate inputs, persist a draft job, and store the full config.
+
+        If ``data.mesh_id`` is provided, the job runs as a solver-from-case job
+        against that Mesh. Otherwise, if the caller supplied a ``mesh_config``
+        that matches an existing completed mesh by hash, we auto-bind to that
+        mesh (sweep reuse). Otherwise the job uses the legacy combined journal.
+        """
         result = await self.db.execute(
             select(Geometry).where(
                 Geometry.id == data.geometry_id,
@@ -76,9 +82,51 @@ class JobService:
                     detail="You are not a member of the selected group",
                 )
 
+        # Resolve mesh_id — explicit binding takes priority, else try reuse by hash.
+        bound_mesh_id = None
+        if data.mesh_id is not None:
+            from app.models.mesh import Mesh, MeshStatus
+            mres = await self.db.execute(select(Mesh).where(Mesh.id == data.mesh_id))
+            mesh = mres.scalar_one_or_none()
+            if mesh is None or mesh.user_id != user.id:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Mesh not found or not owned by you",
+                )
+            if mesh.status != MeshStatus.completed:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Mesh is '{mesh.status.value}'; must be completed before attaching to a job",
+                )
+            if mesh.geometry_id != data.geometry_id:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Mesh was built from a different geometry",
+                )
+            bound_mesh_id = mesh.id
+        else:
+            from app.services.mesh_service import MeshService
+            mesh_service = MeshService(self.db)
+            reusable = await mesh_service.find_reusable_mesh(
+                user=user,
+                geometry_id=data.geometry_id,
+                mesh_config=data.mesh_config.model_dump(),
+                cfd_mode=data.cfd_mode,
+            )
+            if reusable is not None:
+                bound_mesh_id = reusable.id
+                logger.info(
+                    "Auto-bound job to reusable mesh %s (config-hash match)",
+                    reusable.id,
+                )
+
+        # Apply per-mode SOP defaults — fills BCs / iter count / ref area if
+        # the wizard didn't already (e.g. API-direct callers, sweep clones).
+        solver_with_defaults = apply_cfd_mode_defaults(data.cfd_mode, data.solver_config)
         config = {
+            "cfd_mode": data.cfd_mode,
             "mesh": data.mesh_config.model_dump(),
-            "solver": data.solver_config.model_dump(),
+            "solver": solver_with_defaults.model_dump(),
             "slurm": data.slurm_config.model_dump(),
         }
 
@@ -89,6 +137,7 @@ class JobService:
             status=JobStatus.draft,
             config=config,
             group_id=data.group_id,
+            mesh_id=bound_mesh_id,
         )
         self.db.add(job)
         await self.db.flush()
@@ -122,7 +171,10 @@ class JobService:
 
         job.status = JobStatus.queued
         job.submitted_at = datetime.now(timezone.utc).replace(tzinfo=None)
-        await self.db.flush()
+        # MUST commit before enqueuing the Celery task. Otherwise the worker
+        # opens its own DB session, sees status='draft' (the API-level commit
+        # in get_db() hasn't fired yet), and aborts with a state mismatch.
+        await self.db.commit()
         await self.db.refresh(job)
 
         from app.tasks.job_tasks import submit_job_to_cluster
@@ -173,7 +225,7 @@ class JobService:
     @staticmethod
     def _sync_batch_job(job: Job) -> "JobStatus | None":
         """Query sacct for the real SLURM state of a batch job."""
-        from app.tasks.job_tasks import _normalize_slurm_state, _SLURM_STATE_MAP
+        from app.tasks.job_tasks import _SLURM_STATE_MAP
 
         ssh = None
         try:
@@ -190,8 +242,7 @@ class JobService:
 
             status_info = slurm_mgr.get_job_status(job.slurm_job_id)
             raw_state = status_info.get("state", "UNKNOWN").strip()
-            slurm_state = _normalize_slurm_state(raw_state)
-            return _SLURM_STATE_MAP.get(slurm_state)
+            return _SLURM_STATE_MAP.get(raw_state)
         except Exception:
             logger.exception("Failed to sync batch job %s", job.id)
             return None

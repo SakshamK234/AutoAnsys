@@ -3,7 +3,8 @@ import { RecentJobs } from '@/components/dashboard/recent-jobs';
 import { QuickActions } from '@/components/dashboard/quick-actions';
 import { useAuthStore } from '@/stores/auth-store';
 import { useJobs } from '@/hooks/use-jobs';
-import { Zap, CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
+import { useMeshes } from '@/hooks/use-meshes';
+import { Zap, CheckCircle2, Clock, AlertTriangle, Grid3x3 } from 'lucide-react';
 
 function StatCard({ icon: Icon, label, value, accent }: {
   icon: React.ElementType;
@@ -28,11 +29,13 @@ export function DashboardPage() {
   const user = useAuthStore((s) => s.user);
   const isGuest = useAuthStore((s) => s.isGuest);
   const { data, isLoading } = useJobs({ limit: 5 });
+  const { data: meshData } = useMeshes({ limit: 1 });
 
   const jobs = data?.items ?? [];
   const running = jobs.filter((j) => j.status === 'running').length;
   const completed = jobs.filter((j) => j.status === 'completed').length;
   const failed = jobs.filter((j) => j.status === 'failed').length;
+  const totalMeshes = meshData?.total ?? 0;
 
   const greeting = isGuest
     ? 'Welcome, Guest'
@@ -48,8 +51,14 @@ export function DashboardPage() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-5">
         <StatCard icon={Zap} label="Total Sims" value={data?.total ?? 0} />
+        <StatCard
+          icon={Grid3x3}
+          label="Meshes"
+          value={totalMeshes}
+          accent="bg-indigo-500/10 text-indigo-400"
+        />
         <StatCard
           icon={Clock}
           label="Running"

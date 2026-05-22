@@ -1,9 +1,20 @@
 import { useState } from 'react';
 import { useGeometries } from '@/hooks/use-geometries';
 import { useGroups, useCreateGroup, useJoinGroup } from '@/hooks/use-groups';
+import { useMeshes } from '@/hooks/use-meshes';
 import { formatFileSize } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
-import { AlertCircle, Plus, UserPlus, Copy, Check, Users } from 'lucide-react';
+import { AlertCircle, Plus, UserPlus, Copy, Check, Users, Grid3x3 } from 'lucide-react';
+import { CFD_MODE_LABELS } from '@/lib/constants';
+import type { CfdMode } from '@/types';
+
+export type WorkflowMode = 'combined' | 'mesh_only' | 'solve_from_mesh';
+
+const WORKFLOW_MODES: { key: WorkflowMode; title: string; desc: string }[] = [
+  { key: 'combined', title: 'Mesh + Solve', desc: 'One journal, one SLURM job. Legacy single-shot workflow.' },
+  { key: 'mesh_only', title: 'Mesh Only', desc: 'Produces a reusable mesh.cas.h5 artifact. Run solver later.' },
+  { key: 'solve_from_mesh', title: 'Solve from Mesh', desc: 'Pick an existing mesh and run only the solver on it.' },
+];
 
 interface GeometryStepProps {
   name: string;
@@ -12,13 +23,26 @@ interface GeometryStepProps {
   setGeometryId: (id: string) => void;
   groupId: string;
   setGroupId: (id: string) => void;
+  cfdMode: CfdMode;
+  setCfdMode: (mode: CfdMode) => void;
+  workflowMode: WorkflowMode;
+  setWorkflowMode: (mode: WorkflowMode) => void;
+  meshId: string;
+  setMeshId: (id: string) => void;
 }
 
-export function GeometryStep({ name, setName, geometryId, setGeometryId, groupId, setGroupId }: GeometryStepProps) {
+export function GeometryStep({ name, setName, geometryId, setGeometryId, groupId, setGroupId, cfdMode, setCfdMode, workflowMode, setWorkflowMode, meshId, setMeshId }: GeometryStepProps) {
   const navigate = useNavigate();
   const { data, isLoading } = useGeometries();
   const geometries = data?.items ?? [];
   const { data: groups, isLoading: groupsLoading } = useGroups();
+  // Only completed meshes for the selected geometry can be solved against.
+  const { data: meshList } = useMeshes({
+    geometry_id: geometryId || undefined,
+    status: 'completed',
+    limit: 50,
+  });
+  const completedMeshes = meshList?.items ?? [];
 
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [showJoinGroup, setShowJoinGroup] = useState(false);
@@ -73,7 +97,90 @@ export function GeometryStep({ name, setName, geometryId, setGeometryId, groupId
     <div className="space-y-6">
       <div>
         <h3 className="text-lg font-semibold mb-1">Simulation Setup</h3>
-        <p className="text-sm text-[hsl(var(--muted-foreground))]">Name your simulation, pick a geometry, and optionally assign it to a group.</p>
+        <p className="text-sm text-[hsl(var(--muted-foreground))]">Pick the SOP workflow, name your simulation, and choose a geometry.</p>
+      </div>
+
+      {/* Workflow Mode — Mesh / Solve / Combined */}
+      <div>
+        <label className="block text-sm font-medium mb-2">
+          Workflow <span className="text-rose-500">*</span>
+        </label>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          {WORKFLOW_MODES.map((m) => (
+            <button
+              key={m.key}
+              type="button"
+              onClick={() => setWorkflowMode(m.key)}
+              className={
+                'rounded-lg border px-4 py-3 text-left text-sm transition-colors ' +
+                (workflowMode === m.key
+                  ? 'border-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.08)]'
+                  : 'border-[hsl(var(--border))] hover:bg-[hsl(var(--accent))]')
+              }
+            >
+              <div className="font-medium">{m.title}</div>
+              <div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">{m.desc}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Mesh picker — only for Solve from Mesh */}
+      {workflowMode === 'solve_from_mesh' && (
+        <div>
+          <label className="block text-sm font-medium mb-1">
+            <span className="flex items-center gap-1.5">
+              <Grid3x3 className="h-3.5 w-3.5" /> Completed Mesh <span className="text-rose-500">*</span>
+            </span>
+          </label>
+          {!geometryId ? (
+            <p className="text-xs text-[hsl(var(--muted-foreground))]">Pick a geometry first to list meshes.</p>
+          ) : completedMeshes.length === 0 ? (
+            <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400">
+              No completed meshes for this geometry. Run a <strong>Mesh Only</strong> job first, or switch back to <strong>Mesh + Solve</strong>.
+            </div>
+          ) : (
+            <select
+              value={meshId}
+              onChange={(e) => setMeshId(e.target.value)}
+              className="w-full rounded-lg border border-[hsl(var(--input))] bg-[hsl(var(--card))] px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]"
+            >
+              <option value="">Select a mesh...</option>
+              {completedMeshes.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name} — {m.cell_count ? `${m.cell_count.toLocaleString()} cells` : 'cells unknown'}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
+
+      {/* CFD Mode — SOP workflow selector */}
+      <div>
+        <label className="block text-sm font-medium mb-2">CFD Workflow <span className="text-rose-500">*</span></label>
+        <div className="grid grid-cols-2 gap-2">
+          {(Object.keys(CFD_MODE_LABELS) as CfdMode[]).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setCfdMode(mode)}
+              className={
+                'rounded-lg border px-4 py-3 text-left text-sm transition-colors ' +
+                (cfdMode === mode
+                  ? 'border-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.08)]'
+                  : 'border-[hsl(var(--border))] hover:bg-[hsl(var(--accent))]')
+              }
+            >
+              <div className="font-medium">{CFD_MODE_LABELS[mode]}</div>
+              <div className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">
+                {mode === 'individual_part'
+                  ? '3D single-part SOP — 300 iters, no wheels'
+                  : 'Kevin Full Car — 3000 iters, rotating wheels (77 rad/s)'}
+              </div>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Simulation Name */}

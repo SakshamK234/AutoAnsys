@@ -244,9 +244,9 @@ export function TemplatesPage() {
                         {cfg.solver.turbulence.model}
                       </span>
                     )}
-                    {cfg.solver?.boundary_conditions?.inlet?.velocity && (
+                    {cfg.solver?.boundary_conditions?.velocity_inlets?.[0]?.velocity && (
                       <span className="rounded-md bg-[hsl(var(--muted))] px-2 py-0.5 text-[10px] font-medium">
-                        {cfg.solver.boundary_conditions.inlet.velocity} m/s
+                        {cfg.solver.boundary_conditions.velocity_inlets[0].velocity} m/s
                       </span>
                     )}
                     {cfg.solver?.convergence?.max_iterations && (

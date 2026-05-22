@@ -30,6 +30,7 @@ Thumbs.db
 # Docker
 postgres_data/
 minio_data/
+docker-compose.override.yml
 
 # Testing
 .coverage

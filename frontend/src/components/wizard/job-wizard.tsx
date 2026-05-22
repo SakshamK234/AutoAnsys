@@ -1,17 +1,19 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
-import { DEFAULT_MESH_CONFIG, DEFAULT_SOLVER_CONFIG, DEFAULT_SLURM_CONFIG } from '@/lib/constants';
-import { GeometryStep } from './geometry-step';
+import { DEFAULT_MESH_CONFIG, DEFAULT_SOLVER_CONFIG, DEFAULT_SLURM_CONFIG, applyCfdModeDefaults } from '@/lib/constants';
+import { GeometryStep, type WorkflowMode } from './geometry-step';
 import { MeshConfigStep } from './mesh-config-step';
 import { SolverConfigStep } from './solver-config-step';
 import { ResourceConfigStep } from './resource-config-step';
 import { ReviewStep } from './review-step';
 import { ArrowLeft, ArrowRight, Check, Send, AlertCircle, X } from 'lucide-react';
-import type { MeshConfig, SolverConfig, SlurmConfig } from '@/types';
+import type { MeshConfig, SolverConfig, SlurmConfig, CfdMode } from '@/types';
 
-const STEPS = ['Geometry', 'Mesh', 'Solver', 'Resources', 'Review'];
+const STEPS_COMBINED = ['Geometry', 'Mesh', 'Solver', 'Resources', 'Review'];
+const STEPS_MESH_ONLY = ['Geometry', 'Mesh', 'Resources', 'Review'];
+const STEPS_SOLVE_FROM_MESH = ['Geometry', 'Solver', 'Resources', 'Review'];
 
 function validateStep0(name: string, geometryId: string): string | null {
   if (!name.trim()) return 'Simulation name is required.';
@@ -41,23 +43,59 @@ function validateStep3(config: SlurmConfig): string | null {
 
 export function JobWizard() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const tplState = (location.state as { templateConfig?: any; templateName?: string }) || {};
+
   const [step, setStep] = useState(0);
-  const [name, setName] = useState('');
+  const [name, setName] = useState(tplState.templateName ? `${tplState.templateName} — Run` : '');
   const [geometryId, setGeometryId] = useState('');
   const [groupId, setGroupId] = useState('');
-  const [meshConfig, setMeshConfig] = useState<MeshConfig>(DEFAULT_MESH_CONFIG);
-  const [solverConfig, setSolverConfig] = useState<SolverConfig>(DEFAULT_SOLVER_CONFIG);
-  const [slurmConfig, setSlurmConfig] = useState<SlurmConfig>(DEFAULT_SLURM_CONFIG);
+  const [cfdMode, setCfdMode] = useState<CfdMode>('individual_part');
+  const [workflowMode, setWorkflowMode] = useState<WorkflowMode>('combined');
+  const [meshId, setMeshId] = useState('');
+
+  const STEPS =
+    workflowMode === 'mesh_only'
+      ? STEPS_MESH_ONLY
+      : workflowMode === 'solve_from_mesh'
+      ? STEPS_SOLVE_FROM_MESH
+      : STEPS_COMBINED;
+  const [meshConfig, setMeshConfig] = useState<MeshConfig>({ ...DEFAULT_MESH_CONFIG, ...(tplState.templateConfig?.mesh || {}) });
+  const [solverConfig, setSolverConfig] = useState<SolverConfig>({ ...DEFAULT_SOLVER_CONFIG, ...(tplState.templateConfig?.solver || {}) });
+  const [slurmConfig, setSlurmConfig] = useState<SlurmConfig>({ ...DEFAULT_SLURM_CONFIG, ...(tplState.templateConfig?.slurm || {}) });
+
+  // Re-apply mode defaults (iterations, wheel zones) whenever CFD mode changes.
+  const handleModeChange = (mode: CfdMode) => {
+    setCfdMode(mode);
+    setSolverConfig((prev) => applyCfdModeDefaults(mode, prev));
+  };
   const [submitting, setSubmitting] = useState(false);
   const [submitPhase, setSubmitPhase] = useState<'creating' | 'submitting' | null>(null);
   const [error, setError] = useState('');
   const [validationError, setValidationError] = useState('');
 
+  // When switching workflow modes, snap back to step 0 so the step index
+  // stays consistent with the new step list.
+  const handleWorkflowChange = (mode: WorkflowMode) => {
+    setWorkflowMode(mode);
+    setStep(0);
+    setValidationError('');
+  };
+
   const validateCurrentStep = (): boolean => {
     let err: string | null = null;
-    if (step === 0) err = validateStep0(name, geometryId);
-    else if (step === 1) err = validateStep1(meshConfig);
-    else if (step === 3) err = validateStep3(slurmConfig);
+    const stepName = STEPS[step];
+
+    if (stepName === 'Geometry') {
+      err = validateStep0(name, geometryId);
+      if (!err && workflowMode === 'solve_from_mesh' && !meshId) {
+        err = 'Please select a completed mesh to solve against.';
+      }
+    } else if (stepName === 'Mesh') {
+      err = validateStep1(meshConfig);
+    } else if (stepName === 'Resources') {
+      err = validateStep3(slurmConfig);
+    }
 
     if (err) {
       setValidationError(err);
@@ -80,16 +118,37 @@ export function JobWizard() {
 
     try {
       setSubmitPhase('creating');
-      const res = await api.post('/jobs', {
+
+      if (workflowMode === 'mesh_only') {
+        // Create + submit a standalone Mesh. Solver runs separately later.
+        const res = await api.post('/meshes', {
+          name,
+          geometry_id: geometryId,
+          group_id: groupId || undefined,
+          cfd_mode: cfdMode,
+          mesh_config: meshConfig,
+          slurm_config: slurmConfig,
+        });
+        const meshRecordId = res.data.id;
+        setSubmitPhase('submitting');
+        await api.post(`/meshes/${meshRecordId}/submit`);
+        navigate(`/meshes/${meshRecordId}`);
+        return;
+      }
+
+      // combined OR solve_from_mesh → create a Job (optionally with mesh_id)
+      const jobRes = await api.post('/jobs', {
         name,
         geometry_id: geometryId,
         group_id: groupId || undefined,
+        cfd_mode: cfdMode,
+        mesh_id: workflowMode === 'solve_from_mesh' ? meshId : undefined,
         mesh_config: meshConfig,
         solver_config: solverConfig,
         slurm_config: slurmConfig,
       });
 
-      const jobId = res.data.id;
+      const jobId = jobRes.data.id;
 
       setSubmitPhase('submitting');
       await api.post(`/jobs/${jobId}/submit`);
@@ -172,11 +231,35 @@ export function JobWizard() {
 
       {/* Step content */}
       <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6 animate-fade-in">
-        {step === 0 && <GeometryStep name={name} setName={setName} geometryId={geometryId} setGeometryId={setGeometryId} groupId={groupId} setGroupId={setGroupId} />}
-        {step === 1 && <MeshConfigStep config={meshConfig} setConfig={setMeshConfig} />}
-        {step === 2 && <SolverConfigStep config={solverConfig} setConfig={setSolverConfig} />}
-        {step === 3 && <ResourceConfigStep config={slurmConfig} setConfig={setSlurmConfig} />}
-        {step === 4 && <ReviewStep name={name} geometryId={geometryId} meshConfig={meshConfig} solverConfig={solverConfig} slurmConfig={slurmConfig} />}
+        {STEPS[step] === 'Geometry' && (
+          <GeometryStep
+            name={name}
+            setName={setName}
+            geometryId={geometryId}
+            setGeometryId={setGeometryId}
+            groupId={groupId}
+            setGroupId={setGroupId}
+            cfdMode={cfdMode}
+            setCfdMode={handleModeChange}
+            workflowMode={workflowMode}
+            setWorkflowMode={handleWorkflowChange}
+            meshId={meshId}
+            setMeshId={setMeshId}
+          />
+        )}
+        {STEPS[step] === 'Mesh' && <MeshConfigStep config={meshConfig} setConfig={setMeshConfig} />}
+        {STEPS[step] === 'Solver' && <SolverConfigStep config={solverConfig} setConfig={setSolverConfig} cfdMode={cfdMode} />}
+        {STEPS[step] === 'Resources' && <ResourceConfigStep config={slurmConfig} setConfig={setSlurmConfig} />}
+        {STEPS[step] === 'Review' && (
+          <ReviewStep
+            name={name}
+            geometryId={geometryId}
+            cfdMode={cfdMode}
+            meshConfig={meshConfig}
+            solverConfig={solverConfig}
+            slurmConfig={slurmConfig}
+          />
+        )}
       </div>
 
       {/* Navigation */}

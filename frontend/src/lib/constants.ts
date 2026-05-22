@@ -1,4 +1,12 @@
-import type { MeshConfig, SolverConfig, SlurmConfig, WindTunnelConfig } from '@/types';
+import type {
+  MeshConfig,
+  SolverConfig,
+  SlurmConfig,
+  WindTunnelConfig,
+  EnclosureConfig,
+  LocalSizingCategory,
+  CfdMode,
+} from '@/types';
 
 export const WIND_TUNNEL_PRESETS: Record<string, WindTunnelConfig> = {
   'Component Small': {
@@ -28,10 +36,50 @@ export const WIND_TUNNEL_PRESETS: Record<string, WindTunnelConfig> = {
 };
 
 export const VELOCITY_PRESETS: Record<string, number> = {
+  'FSAE SOP (15.65)': 15.65,
   'Autocross 15': 15,
   'Endurance 20': 20,
   'Acceleration 25': 25,
   'Top Speed 30': 30,
+};
+
+// SOP enclosure presets (mm), measured from the part — built in Discovery, not Fluent.
+// Individual Part SOP: back 8000, front 1000, rest 2500.
+// Kevin Full Car: front must be 1000 (not 2892.28); rest use individual-part defaults.
+export const ENCLOSURE_PRESETS: Record<string, EnclosureConfig> = {
+  'Individual Part (SOP)': {
+    back_mm: 8000,
+    front_mm: 1000,
+    top_mm: 2500,
+    bottom_mm: 2500,
+    left_mm: 2500,
+    right_mm: 2500,
+    flow_axis: '+x',
+  },
+  'Full Car (Kevin)': {
+    back_mm: 8000,
+    front_mm: 1000,
+    top_mm: 2500,
+    bottom_mm: 2500,
+    left_mm: 2500,
+    right_mm: 2500,
+    flow_axis: '+x',
+  },
+};
+
+export const LOCAL_SIZING_CATEGORIES: { value: LocalSizingCategory; label: string; group: 'sizing' | 'refinement' }[] = [
+  { value: 'aero', label: 'Aero (airfoils / diffusers)', group: 'sizing' },
+  { value: 'chassis', label: 'Chassis', group: 'sizing' },
+  { value: 'wheels', label: 'Wheels', group: 'sizing' },
+  { value: 'intake', label: 'Intake', group: 'sizing' },
+  { value: 'nearfield', label: 'Nearfield refinement', group: 'refinement' },
+  { value: 'farfield', label: 'Farfield refinement', group: 'refinement' },
+  { value: 'rear_wing', label: 'Rear Wing refinement', group: 'refinement' },
+];
+
+export const CFD_MODE_LABELS: Record<CfdMode, string> = {
+  individual_part: 'Individual Part (SOP)',
+  full_car: 'Full Car (Kevin reference)',
 };
 
 export const TURBULENCE_MODELS = [
@@ -84,8 +132,9 @@ export const PARTITIONS = [
 export const DEFAULT_MESH_CONFIG: MeshConfig = {
   local_sizing: [],
   surface_mesh: {
-    min_size: 0.002,
-    max_size: 0.1,
+    // mm units. Reference SOP journal used 2 / 264.
+    min_size: 2,
+    max_size: 264,
     curvature_normal_angle: 18,
     growth_rate: 1.2,
   },
@@ -97,6 +146,21 @@ export const DEFAULT_MESH_CONFIG: MeshConfig = {
     z_min: -3.0,
     z_max: 3.0,
   },
+  // SOP enclosure (mm) is the default representation from now on.
+  enclosure: {
+    back_mm: 8000,
+    front_mm: 1000,
+    top_mm: 2500,
+    bottom_mm: 2500,
+    left_mm: 2500,
+    right_mm: 2500,
+    flow_axis: '+x',
+  },
+  mesh_quality: {
+    surface_skewness_threshold: 0.6,
+    volume_orthogonal_quality_threshold: 0.15,
+    auto_improve: true,
+  },
   volume_mesh: {
     max_cell_length: 0.15,
     growth_rate: 1.2,
@@ -104,7 +168,9 @@ export const DEFAULT_MESH_CONFIG: MeshConfig = {
     num_layers: 15,
     bl_growth_rate: 1.2,
   },
-  geometry_unit: 'm',
+  geometry_unit: 'mm',
+  // SOP face labels applied in Discovery.
+  original_zones: ['inlet', 'outlet', 'ground', 'symmetry', 'walls'],
 };
 
 export const DEFAULT_SOLVER_CONFIG: SolverConfig = {
@@ -116,27 +182,17 @@ export const DEFAULT_SOLVER_CONFIG: SolverConfig = {
   turbulence: {
     model: 'k-omega-sst',
     near_wall_treatment: 'auto',
+    curvature_correction: true,
   },
+  // BCs start empty — applyCfdModeDefaults() fills them per-mode.
   boundary_conditions: {
-    inlet: {
-      zone_name: 'inlet',
-      velocity: 20,
-      turbulent_intensity: 0.01,
-      turbulent_viscosity_ratio: 10,
-    },
-    outlet: {
-      zone_name: 'outlet',
-      gauge_pressure: 0,
-    },
-    ground: {
-      zone_name: 'ground',
-      type: 'moving-wall',
-      velocity: 20,
-    },
-    symmetry: {
-      zone_names: ['symmetry-top', 'symmetry-side-1', 'symmetry-side-2'],
-      type: 'symmetry',
-    },
+    velocity_inlets: [],
+    pressure_outlets: [],
+    translating_walls: [],
+    rotating_walls: [],
+    slip_walls: [],
+    stationary_walls: [],
+    symmetry_planes: [],
   },
   solution_methods: {
     scheme: 'Coupled',
@@ -148,7 +204,8 @@ export const DEFAULT_SOLVER_CONFIG: SolverConfig = {
   },
   convergence: {
     residual_target: 1e-4,
-    max_iterations: 2000,
+    // SOP Individual Part = 300; Full Car mode bumps this to 3000.
+    max_iterations: 300,
     force_monitor_window: 100,
     force_monitor_tolerance: 0.001,
   },
@@ -158,7 +215,123 @@ export const DEFAULT_SOLVER_CONFIG: SolverConfig = {
     case_data: true,
     surface_data: ['pressure', 'wall-shear'],
   },
+  reference_values: {
+    area_m2: 1.2,
+    length_m: 2.8,
+    velocity_mps: 15.65,
+  },
+  // "hybrid" → /solve/init/hyb-init (matches specialist script).
+  // "hybrid-absolute" → set absolute reference frame, then hyb-initialize.
+  initialization: 'hybrid',
 };
+
+/**
+ * Mirror of backend `apply_cfd_mode_defaults` (schemas/job.py).
+ *
+ * - full_car: BCs = inlet (15.65, 5%/10), front-tire & rear-tire @ 77 rad/s
+ *   with the Max-Squat origins, ground translating at -15.65 m/s in -x,
+ *   tunnel-walls and contact-patches as slip walls.
+ *   Reference area 0.65 m², iterations 750.
+ * - individual_part: inlet, outlet, moving ground, walls, symmetry plane.
+ *   Reference area 1.2 m², iterations 300.
+ *
+ * Only fills BCs when all lists are empty, so once the wizard has populated
+ * them, switching modes does not clobber user edits.
+ */
+export function applyCfdModeDefaults(mode: CfdMode, solver: SolverConfig): SolverConfig {
+  const next: SolverConfig = JSON.parse(JSON.stringify(solver));
+  const bc = next.boundary_conditions;
+  const isEmpty =
+    bc.velocity_inlets.length === 0 &&
+    bc.pressure_outlets.length === 0 &&
+    bc.translating_walls.length === 0 &&
+    bc.rotating_walls.length === 0 &&
+    bc.slip_walls.length === 0 &&
+    bc.stationary_walls.length === 0 &&
+    bc.symmetry_planes.length === 0;
+
+  if (mode === 'full_car') {
+    if (isEmpty) {
+      next.boundary_conditions = {
+        velocity_inlets: [
+          {
+            zone_name: 'inlet',
+            velocity: 15.65,
+            turbulent_intensity_pct: 5.0,
+            turbulent_viscosity_ratio: 10.0,
+          },
+        ],
+        pressure_outlets: [],
+        translating_walls: [
+          {
+            zone_name: 'ground',
+            velocity_mps: 15.65,
+            direction_x: -1.0,
+            direction_y: 0.0,
+            direction_z: 0.0,
+          },
+        ],
+        rotating_walls: [
+          {
+            zone_name: 'front-tire',
+            omega_rad_s: 77.0,
+            origin_x: 0.8264, origin_y: 0.6125, origin_z: 0.1998,
+            axis_x: 0.0, axis_y: 1.0, axis_z: 0.0,
+          },
+          {
+            zone_name: 'rear-tire',
+            omega_rad_s: 77.0,
+            origin_x: -0.7056, origin_y: 0.6125, origin_z: 0.1998,
+            axis_x: 0.0, axis_y: 1.0, axis_z: 0.0,
+          },
+        ],
+        slip_walls: [
+          { zone_name: 'tunnel-walls' },
+          { zone_name: 'contact-patches' },
+        ],
+        stationary_walls: [],
+        symmetry_planes: [],
+      };
+    }
+    if (next.reference_values.area_m2 === 1.2) {
+      next.reference_values.area_m2 = 0.65;
+    }
+    if (next.convergence.max_iterations === 300 || next.convergence.max_iterations === 3000) {
+      next.convergence.max_iterations = 750;
+    }
+  } else if (mode === 'individual_part') {
+    if (isEmpty) {
+      next.boundary_conditions = {
+        velocity_inlets: [
+          {
+            zone_name: 'inlet',
+            velocity: 15.65,
+            turbulent_intensity_pct: 5.0,
+            turbulent_viscosity_ratio: 10.0,
+          },
+        ],
+        pressure_outlets: [{ zone_name: 'outlet', gauge_pressure: 0.0 }],
+        translating_walls: [
+          {
+            zone_name: 'ground',
+            velocity_mps: 15.65,
+            direction_x: -1.0,
+            direction_y: 0.0,
+            direction_z: 0.0,
+          },
+        ],
+        rotating_walls: [],
+        slip_walls: [],
+        stationary_walls: [{ zone_name: 'walls' }],
+        symmetry_planes: [{ zone_name: 'symmetry' }],
+      };
+    }
+    if (next.convergence.max_iterations === 750) {
+      next.convergence.max_iterations = 300;
+    }
+  }
+  return next;
+}
 
 export const DEFAULT_SLURM_CONFIG: SlurmConfig = {
   nodes: 1,

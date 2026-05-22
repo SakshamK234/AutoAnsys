@@ -10,6 +10,11 @@ import { JobsPage } from '@/pages/jobs';
 import { JobDetailPage } from '@/pages/job-detail';
 import { GeometriesPage } from '@/pages/geometries';
 import { TemplatesPage } from '@/pages/templates';
+import { TemplateDetailPage } from '@/pages/template-detail';
+import { ComparePage } from '@/pages/compare';
+import { SweepPage } from '@/pages/sweep';
+import { MeshesPage } from '@/pages/meshes';
+import { MeshDetailPage } from '@/pages/mesh-detail';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -45,6 +50,11 @@ export default function App() {
               <Route path="/jobs/:id" element={<JobDetailPage />} />
               <Route path="/geometries" element={<GeometriesPage />} />
               <Route path="/templates" element={<TemplatesPage />} />
+              <Route path="/templates/:id" element={<TemplateDetailPage />} />
+              <Route path="/compare" element={<ComparePage />} />
+              <Route path="/sweep" element={<SweepPage />} />
+              <Route path="/meshes" element={<MeshesPage />} />
+              <Route path="/meshes/:id" element={<MeshDetailPage />} />
             </Route>
           </Routes>
         </AppInit>

@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.auth.router import router as auth_router
 from app.api.geometries import router as geometries_router
 from app.api.jobs import router as jobs_router
+from app.api.meshes import router as meshes_router
 from app.api.templates import router as templates_router
 from app.api.files import router as files_router
 from app.api.cluster import router as cluster_router
@@ -44,6 +45,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(geometries_router)
 app.include_router(jobs_router)
+app.include_router(meshes_router)
 app.include_router(templates_router)
 app.include_router(files_router)
 app.include_router(cluster_router)

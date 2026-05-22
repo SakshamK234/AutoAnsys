@@ -17,9 +17,9 @@ export function useUploadGeometry() {
 
   return useMutation({
     mutationFn: async (formData: FormData) => {
-      const res = await api.post<Geometry>('/geometries/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      // Let axios set Content-Type (including the multipart boundary) automatically.
+      // Manually setting 'multipart/form-data' strips the boundary and breaks parsing.
+      const res = await api.post<Geometry>('/geometries/upload', formData);
       return res.data;
     },
     onSuccess: () => {

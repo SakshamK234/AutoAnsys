@@ -10,6 +10,7 @@ celery_app = Celery(
     backend=settings.REDIS_URL,
     include=[
         "app.tasks.job_tasks",
+        "app.tasks.mesh_tasks",
     ],
 )
 
@@ -25,6 +26,10 @@ celery_app.conf.update(
     beat_schedule={
         "poll-active-jobs": {
             "task": "app.tasks.job_tasks.poll_active_jobs",
+            "schedule": float(settings.JOB_POLL_INTERVAL),
+        },
+        "poll-active-meshes": {
+            "task": "app.tasks.mesh_tasks.poll_active_meshes",
             "schedule": float(settings.JOB_POLL_INTERVAL),
         },
     },

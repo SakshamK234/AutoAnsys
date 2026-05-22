@@ -3,28 +3,43 @@
 #SBATCH --account={{ slurm.account | default("your_slurm_account") }}
 #SBATCH --partition={{ slurm.partition | default("normal_q") }}
 #SBATCH --nodes={{ slurm.nodes | default(1) }}
-#SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task={{ slurm.cores_per_node | default(128) }}
+#
+# IMPORTANT: Fluent runs MPI parallel — one rank per core. ARC schedulers
+# bind by *task*, not by cpus-per-task threads, so each MPI rank must be its
+# own SLURM task or they all collapse onto one core slot.
+# WRONG (silently serial):  --ntasks-per-node=1 --cpus-per-task=N
+# RIGHT:                    --ntasks-per-node=N --cpus-per-task=1
+#SBATCH --ntasks-per-node={{ slurm.cores_per_node | default(64) }}
+#SBATCH --cpus-per-task=1
+#SBATCH --exclusive
 #SBATCH --mem={{ slurm.memory_gb | default(243) }}G
 #SBATCH --time={{ "%02d" | format(slurm.walltime_hours | default(12)) }}:00:00
 #SBATCH --output={{ workspace }}/slurm-%j.out
 #SBATCH --error={{ workspace }}/slurm-%j.err
 
 # ===========================================================================
-# AutoAnsys CFD Job — submitted via sbatch on an ARC compute node
-# All computation runs on allocated compute nodes, NEVER on login nodes.
+# AutoAnsys CFD Job — runs on an ARC compute node (NEVER on login nodes).
+#
+# Core-count guidance:
+#   • Meshing (Watertight): mostly single-threaded — diminishing returns past
+#     ~16 cores. 64–128 cores actually slow it down due to MPI overhead.
+#   • Solver (steady RANS):  scales well to a full node (64–128 cores).
+# Use mesh-only jobs with cores_per_node=16, then solver jobs with 64–128.
 # ===========================================================================
 
 set -euo pipefail
 
-NCORES=${SLURM_CPUS_PER_TASK:-{{ slurm.cores_per_node | default(128) }}}
+# Total MPI ranks available (= ntasks). Fluent's `-t` flag must match this.
+NCORES=${SLURM_NTASKS:-{{ slurm.cores_per_node | default(64) }}}
 
 echo "=== AutoAnsys Job Start: $(date) ==="
-echo "Job ID:    $SLURM_JOB_ID"
-echo "Node(s):   $SLURM_NODELIST"
-echo "Cores:     $NCORES"
-echo "Partition: $SLURM_JOB_PARTITION"
-echo "Workspace: {{ workspace }}"
+echo "Job ID:        $SLURM_JOB_ID"
+echo "Node(s):       $SLURM_NODELIST"
+echo "Total ranks:   $NCORES  (SLURM_NTASKS)"
+echo "Per-node ranks: ${SLURM_NTASKS_PER_NODE:-?}  (SLURM_NTASKS_PER_NODE)"
+echo "Threads/task:  ${SLURM_CPUS_PER_TASK:-1}  (should be 1 for Fluent MPI)"
+echo "Partition:     $SLURM_JOB_PARTITION"
+echo "Workspace:     {{ workspace }}"
 
 cd {{ workspace }}
 module reset
@@ -33,9 +48,21 @@ module load {{ fluent_module }}
 echo "Fluent binary: $(which fluent)"
 echo ""
 
-# Single Fluent session: meshing → switch-to-solution-mode → solver
-echo "=== Fluent Start ($(date)) ==="
-fluent 3ddp -meshing -g -t${NCORES} -i autoansys.jou 2>&1 | tee fluent.log
+# Single Fluent session. `-t${NCORES}` must match $SLURM_NTASKS — see the
+# SBATCH header above.
+#   start_mode=meshing → mesh-only or combined (Watertight + solver) journal
+#                        opens in meshing mode; switches itself to solver later.
+#   start_mode=solver  → solver-from-case journal expects to start in solver
+#                        mode so /define/... TUI paths exist. Without this
+#                        Fluent stays in meshing mode and rejects
+#                        /define/boundary-conditions/... as "invalid command".
+{% if start_mode | default("meshing") == "meshing" %}
+FLUENT_MODE_FLAG="-meshing"
+{% else %}
+FLUENT_MODE_FLAG=""
+{% endif %}
+echo "=== Fluent Start ($(date)) — start_mode={{ start_mode | default('meshing') }} ==="
+fluent 3ddp ${FLUENT_MODE_FLAG} -g -t${NCORES} -i autoansys.jou 2>&1 | tee fluent.log
 FLUENT_EXIT=${PIPESTATUS[0]}
 echo "Fluent exit code: $FLUENT_EXIT"
 if [ $FLUENT_EXIT -ne 0 ]; then

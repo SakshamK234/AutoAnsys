@@ -9,7 +9,7 @@ AutoAnsys supports two ways to run CFD simulations on Virginia Tech's ARC Tinker
 
 ## Before You Start
 
-- Upload your geometry (`.step` / `.iges`) on the **Geometries** page
+- Upload your geometry on the **Geometries** page. Accepted formats: STEP (`.stp`/`.step`), IGES (`.igs`/`.iges`), **Parasolid (`.x_t`/`.x_b`/`.xmt_txt`/`.xmt_bin`) — recommended per SOP**, and Discovery script (`.dsco`). Per CFD_SOP Step 1, export as Parasolid for best topology fidelity.
 - Have your ARC credentials configured in AutoAnsys (SSH key + username)
 - Know your SLURM allocation / project account name (site-specific; replace default `your_slurm_account` in the app)
 

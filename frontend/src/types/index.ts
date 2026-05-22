@@ -68,9 +68,21 @@ export type JobStatus =
 
 // ── Mesh Config (mirrors backend schemas/job.py) ─────────────────────────────
 
+// SOP categories: aero / chassis / wheels / intake are local *sizings*;
+// nearfield / farfield / rear_wing are local *refinement regions* (Kevin Full Car).
+export type LocalSizingCategory =
+  | 'aero'
+  | 'chassis'
+  | 'wheels'
+  | 'intake'
+  | 'nearfield'
+  | 'farfield'
+  | 'rear_wing';
+
 export interface LocalSizingRegion {
   name: string;
   type: 'body_of_influence' | 'face_sizing';
+  category?: LocalSizingCategory | null;
   size: number;
   growth_rate: number;
   x_min?: number;
@@ -106,12 +118,38 @@ export interface WindTunnelConfig {
   z_max: number;
 }
 
+// Axis the car nose points along (informational only — enclosure is built in Discovery).
+export type FlowAxis = '+x' | '-x' | '+y' | '-y' | '+z' | '-z';
+
+// Documentation-only record of the enclosure the user built in Discovery.
+// Fluent does NOT re-create this — the CAD already contains it.
+export interface EnclosureConfig {
+  back_mm: number;
+  front_mm: number;
+  top_mm: number;
+  bottom_mm: number;
+  left_mm: number;
+  right_mm: number;
+  flow_axis: FlowAxis;
+}
+
+export interface MeshQuality {
+  surface_skewness_threshold: number;
+  volume_orthogonal_quality_threshold: number;
+  auto_improve: boolean;
+}
+
 export interface MeshConfig {
   local_sizing: LocalSizingRegion[];
   surface_mesh: SurfaceMeshConfig;
   volume_mesh: VolumeMeshConfig;
   wind_tunnel: WindTunnelConfig;
+  enclosure: EnclosureConfig | null;
+  mesh_quality: MeshQuality;
   geometry_unit: string;
+  // Face labels applied in Discovery to the Parasolid export.
+  // Passed to Fluent as OriginalZones so they survive meshing.
+  original_zones: string[];
 }
 
 // ── Solver Config (mirrors backend schemas/job.py) ───────────────────────────
@@ -125,36 +163,67 @@ export interface GeneralSolverConfig {
 export interface TurbulenceConfig {
   model: string;
   near_wall_treatment: string;
+  curvature_correction: boolean;
 }
 
-export interface InletBC {
+// ── Boundary-condition primitives ──────────────────────────────────
+// Mirrors backend/app/schemas/job.py exactly. Each BC list is independent;
+// empty lists are skipped by the journal renderer.
+
+export interface VelocityInletBC {
   zone_name: string;
   velocity: number;
-  turbulent_intensity: number;
+  // Turbulent intensity in PERCENT (5.0 = 5%) — matches the Fluent TUI
+  // "/define/.../velocity-inlet ... yes 5 10" form used in the specialist
+  // script. Not the 0–1 fraction.
+  turbulent_intensity_pct: number;
   turbulent_viscosity_ratio: number;
 }
 
-export interface OutletBC {
+export interface PressureOutletBC {
   zone_name: string;
   gauge_pressure: number;
 }
 
-export interface GroundBC {
+export interface TranslatingWallBC {
   zone_name: string;
-  type: string;
-  velocity: number;
+  velocity_mps: number;
+  direction_x: number;
+  direction_y: number;
+  direction_z: number;
 }
 
-export interface SymmetryBC {
-  zone_names: string[];
-  type: string;
+export interface RotatingWallBC {
+  zone_name: string;
+  omega_rad_s: number;
+  origin_x: number;
+  origin_y: number;
+  origin_z: number;
+  axis_x: number;
+  axis_y: number;
+  axis_z: number;
+}
+
+export interface SlipWallBC {
+  zone_name: string;
+}
+
+export interface StationaryWallBC {
+  zone_name: string;
+}
+
+export interface SymmetryPlaneBC {
+  zone_name: string;
 }
 
 export interface BoundaryConditions {
-  inlet: InletBC;
-  outlet: OutletBC;
-  ground: GroundBC;
-  symmetry: SymmetryBC;
+  velocity_inlets: VelocityInletBC[];
+  pressure_outlets: PressureOutletBC[];
+  translating_walls: TranslatingWallBC[];
+  rotating_walls: RotatingWallBC[];
+  slip_walls: SlipWallBC[];
+  stationary_walls: StationaryWallBC[];
+  symmetry_planes: SymmetryPlaneBC[];
 }
 
 export interface SolutionMethods {
@@ -180,6 +249,14 @@ export interface DataExportConfig {
   surface_data: string[];
 }
 
+export interface ReferenceValues {
+  area_m2: number;
+  length_m: number;
+  velocity_mps: number;
+}
+
+export type InitializationMode = 'hybrid' | 'hybrid-absolute';
+
 export interface SolverConfig {
   general: GeneralSolverConfig;
   turbulence: TurbulenceConfig;
@@ -187,7 +264,11 @@ export interface SolverConfig {
   solution_methods: SolutionMethods;
   convergence: ConvergenceConfig;
   data_export: DataExportConfig;
+  reference_values: ReferenceValues;
+  initialization: InitializationMode;
 }
+
+export type CfdMode = 'individual_part' | 'full_car';
 
 // ── SLURM Config ─────────────────────────────────────────────────────────────
 
@@ -209,6 +290,14 @@ export interface JobConfig {
   slurm: SlurmConfig;
 }
 
+export interface MeshSummary {
+  id: string;
+  name: string;
+  status: MeshStatus;
+  cell_count: number | null;
+  meshing_minutes: number | null;
+}
+
 export interface Job {
   id: string;
   user_id: string;
@@ -224,7 +313,64 @@ export interface Job {
   group_id: string | null;
   group_name: string | null;
   owner_name: string | null;
+  // Null for legacy combined-mode jobs; set for split-mode jobs that read an
+  // existing mesh.cas.h5 from the referenced Mesh.
+  mesh_id: string | null;
+  mesh: MeshSummary | null;
   created_at: string;
+}
+
+// ── Mesh (split workflow Phase 1 — first-class artifact) ─────────────────────
+
+export type MeshStatus =
+  | 'draft'
+  | 'queued'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
+
+export interface Mesh {
+  id: string;
+  user_id: string;
+  geometry_id: string;
+  group_id: string | null;
+  name: string;
+  status: MeshStatus;
+  config: {
+    cfd_mode: CfdMode;
+    mesh: MeshConfig;
+    slurm: SlurmConfig;
+  } | null;
+  config_hash: string;
+  cell_count: number | null;
+  meshing_minutes: number | null;
+  case_file_s3_key: string | null;
+  slurm_job_id: string | null;
+  submitted_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  cluster_workspace: string | null;
+  created_at: string;
+  // Enrichments populated by the API
+  geometry_name: string | null;
+  group_name: string | null;
+  owner_name: string | null;
+  jobs_using_count: number | null;
+}
+
+export interface MeshListResponse {
+  items: Mesh[];
+  total: number;
+}
+
+export interface MeshCreateRequest {
+  geometry_id: string;
+  name: string;
+  group_id?: string | null;
+  cfd_mode: CfdMode;
+  mesh_config: MeshConfig;
+  slurm_config: SlurmConfig;
 }
 
 export interface JobListResponse {

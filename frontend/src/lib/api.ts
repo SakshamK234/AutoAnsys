@@ -1,11 +1,12 @@
 import axios from 'axios';
 import type { AxiosError, InternalAxiosRequestConfig } from 'axios';
 
+// NOTE: do NOT set a default Content-Type here. Axios auto-detects the body
+// type per-request: JSON → 'application/json', FormData → 'multipart/form-data'
+// with the required boundary. A hard-coded default overrides that detection
+// and silently breaks file uploads (FastAPI returns 422 on the malformed body).
 const api = axios.create({
   baseURL: '/api',
-  headers: {
-    'Content-Type': 'application/json',
-  },
 });
 
 // Request interceptor: attach JWT access token
@@ -39,11 +40,26 @@ function clearAuthAndRedirect() {
   window.location.href = '/login';
 }
 
+// Endpoints that must never trigger the refresh/redirect flow —
+// a 401 from these is a legitimate credential error that the caller
+// needs to see (e.g. "Invalid email or password" on the login form).
+const AUTH_BYPASS_PATHS = ['/auth/login', '/auth/register', '/auth/guest', '/auth/refresh'];
+
+function isAuthBypass(url: string | undefined): boolean {
+  if (!url) return false;
+  return AUTH_BYPASS_PATHS.some((p) => url.endsWith(p));
+}
+
 // Response interceptor: attempt silent refresh on 401
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const original = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+
+    // Never intercept auth-endpoint failures — propagate so the form can show them.
+    if (isAuthBypass(original?.url)) {
+      return Promise.reject(error);
+    }
 
     if (error.response?.status !== 401 || original._retry) {
       if (error.response?.status === 401) clearAuthAndRedirect();

@@ -1,15 +1,33 @@
 """Business logic for geometry upload, download, and deletion."""
 
+import os
 import uuid
 
 import boto3
-from fastapi import UploadFile
+from fastapi import HTTPException, UploadFile, status
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.geometry import Geometry
 from app.models.user import User
+
+
+# Fluent Meshing 2025R1 Watertight workflow accepts these CAD formats.
+# Parasolid (.x_t/.x_b) is the SOP-recommended export format.
+ALLOWED_GEOMETRY_EXTENSIONS = {
+    ".stp",
+    ".step",
+    ".igs",
+    ".iges",
+    # Parasolid — per CFD_SOP (Individual Part) Step 1: "Export your cad file as a Parasolid"
+    ".x_t",
+    ".x_b",
+    ".xmt_txt",
+    ".xmt_bin",
+    # Discovery script
+    ".dsco",
+}
 
 
 class GeometryService:
@@ -32,6 +50,16 @@ class GeometryService:
         description: str | None = None,
     ) -> Geometry:
         """Upload a geometry file to S3 and create a database record."""
+        # Validate extension (case-insensitive) before reading the body.
+        original = file.filename or ""
+        ext = os.path.splitext(original)[1].lower()
+        if ext not in ALLOWED_GEOMETRY_EXTENSIONS:
+            allowed = ", ".join(sorted(ALLOWED_GEOMETRY_EXTENSIONS))
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail=f"Unsupported file extension '{ext or '(none)'}'. Allowed: {allowed}",
+            )
+
         file_bytes = await file.read()
         file_size = len(file_bytes)
 

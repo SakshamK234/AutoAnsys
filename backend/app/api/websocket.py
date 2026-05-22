@@ -13,6 +13,7 @@ from app.auth.jwt import verify_token
 from app.config import settings
 from app.database import async_session
 from app.models.job import Job
+from app.models.mesh import Mesh
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +98,78 @@ async def job_live(
                 break
     except Exception:
         logger.debug("WebSocket closed for job %s", job_id)
+    finally:
+        listener_task.cancel()
+        try:
+            await listener_task
+        except asyncio.CancelledError:
+            pass
+        await pubsub.unsubscribe(channel)
+        await pubsub.aclose()
+        await r.aclose()
+
+
+@router.websocket("/ws/meshes/{mesh_id}/live")
+async def mesh_live(
+    websocket: WebSocket,
+    mesh_id: str,
+    token: str = Query(default=""),
+):
+    """Stream real-time events for a specific mesh (split workflow Phase 1)."""
+    user_id = await _authenticate(token)
+    if user_id is None:
+        await websocket.close(code=4001, reason="Unauthorized")
+        return
+
+    try:
+        mesh_uuid = uuid.UUID(mesh_id)
+    except ValueError:
+        await websocket.close(code=4002, reason="Invalid mesh ID")
+        return
+
+    async with async_session() as db:
+        result = await db.execute(
+            select(Mesh).where(Mesh.id == mesh_uuid, Mesh.user_id == user_id)
+        )
+        mesh = result.scalar_one_or_none()
+        if mesh is None:
+            await websocket.close(code=4003, reason="Mesh not found")
+            return
+        initial_status = mesh.status.value if hasattr(mesh.status, "value") else str(mesh.status)
+
+    await websocket.accept()
+
+    r = aioredis.from_url(settings.REDIS_URL)
+    pubsub = r.pubsub()
+    channel = f"mesh:{mesh_id}:events"
+    await pubsub.subscribe(channel)
+
+    async def _redis_listener():
+        try:
+            async for msg in pubsub.listen():
+                if msg["type"] == "message":
+                    try:
+                        payload = json.loads(msg["data"])
+                        await websocket.send_json(payload)
+                    except Exception:
+                        break
+        except asyncio.CancelledError:
+            pass
+
+    listener_task = asyncio.create_task(_redis_listener())
+
+    try:
+        await websocket.send_json({
+            "type": "status_update",
+            "data": {"status": initial_status},
+        })
+        while True:
+            try:
+                await websocket.receive_text()
+            except WebSocketDisconnect:
+                break
+    except Exception:
+        logger.debug("WebSocket closed for mesh %s", mesh_id)
     finally:
         listener_task.cancel()
         try:

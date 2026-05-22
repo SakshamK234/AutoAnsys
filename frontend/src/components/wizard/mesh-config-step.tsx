@@ -1,7 +1,16 @@
-import { WIND_TUNNEL_PRESETS } from '@/lib/constants';
+import { ENCLOSURE_PRESETS } from '@/lib/constants';
 import { calculateYPlus } from '@/lib/utils';
 import { useState } from 'react';
-import type { MeshConfig } from '@/types';
+import type { MeshConfig, EnclosureConfig } from '@/types';
+
+const DEFAULT_ENCLOSURE: EnclosureConfig = {
+  back_mm: 8000,
+  front_mm: 1000,
+  top_mm: 2500,
+  bottom_mm: 2500,
+  left_mm: 2500,
+  right_mm: 2500,
+};
 
 interface MeshConfigStepProps {
   config: MeshConfig;
@@ -40,29 +49,69 @@ export function MeshConfigStep({ config, setConfig }: MeshConfigStepProps) {
         </div>
       </section>
 
-      {/* Wind Tunnel */}
+      {/* Enclosure (SOP-style, mm, measured from part) */}
       <section>
-        <h4 className="font-medium mb-3 text-[hsl(var(--primary))]">Wind Tunnel (Fluid Domain)</h4>
+        <h4 className="font-medium mb-1 text-[hsl(var(--primary))]">Enclosure (Fluid Domain)</h4>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-3">
+          Distances from the part to each enclosure face, in mm (per FSAE SOP: back 8000, front 1000, rest 2500).
+        </p>
         <div className="mb-3">
           <label className="block text-xs font-medium mb-1">Preset</label>
           <select
             onChange={(e) => {
-              const preset = WIND_TUNNEL_PRESETS[e.target.value];
-              if (preset) setConfig({ ...config, wind_tunnel: preset });
+              const preset = ENCLOSURE_PRESETS[e.target.value];
+              if (preset) setConfig({ ...config, enclosure: preset });
             }}
             className="w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm"
           >
             <option value="">Custom</option>
-            {Object.keys(WIND_TUNNEL_PRESETS).map((k) => <option key={k} value={k}>{k}</option>)}
+            {Object.keys(ENCLOSURE_PRESETS).map((k) => <option key={k} value={k}>{k}</option>)}
           </select>
         </div>
+        {(() => {
+          const enc = config.enclosure ?? DEFAULT_ENCLOSURE;
+          const setEnc = (patch: Partial<EnclosureConfig>) =>
+            setConfig({ ...config, enclosure: { ...enc, ...patch } });
+          return (
+            <div className="grid grid-cols-3 gap-4">
+              <div><label className="block text-xs font-medium mb-1">Back (mm)</label><input type="number" value={enc.back_mm} onChange={(e) => setEnc({ back_mm: +e.target.value })} className="w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm" /></div>
+              <div><label className="block text-xs font-medium mb-1">Front (mm)</label><input type="number" value={enc.front_mm} onChange={(e) => setEnc({ front_mm: +e.target.value })} className="w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm" /></div>
+              <div><label className="block text-xs font-medium mb-1">Top (mm)</label><input type="number" value={enc.top_mm} onChange={(e) => setEnc({ top_mm: +e.target.value })} className="w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm" /></div>
+              <div><label className="block text-xs font-medium mb-1">Bottom (mm)</label><input type="number" value={enc.bottom_mm} onChange={(e) => setEnc({ bottom_mm: +e.target.value })} className="w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm" /></div>
+              <div><label className="block text-xs font-medium mb-1">Left (mm)</label><input type="number" value={enc.left_mm} onChange={(e) => setEnc({ left_mm: +e.target.value })} className="w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm" /></div>
+              <div><label className="block text-xs font-medium mb-1">Right (mm)</label><input type="number" value={enc.right_mm} onChange={(e) => setEnc({ right_mm: +e.target.value })} className="w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm" /></div>
+            </div>
+          );
+        })()}
+      </section>
+
+      {/* Mesh Quality (SOP auto-improve loops) */}
+      <section>
+        <h4 className="font-medium mb-1 text-[hsl(var(--primary))]">Mesh Quality</h4>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-3">
+          SOP auto-improvement: re-run the improve-surface-mesh task if skewness exceeds the threshold (0.6), and the improve-volume-mesh task if orthogonal quality is below 0.15.
+        </p>
         <div className="grid grid-cols-3 gap-4">
-          <div><label className="block text-xs font-medium mb-1">X Min (m)</label><input type="number" value={config.wind_tunnel.x_min} onChange={(e) => update('wind_tunnel.x_min', +e.target.value)} className="w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm" /></div>
-          <div><label className="block text-xs font-medium mb-1">X Max (m)</label><input type="number" value={config.wind_tunnel.x_max} onChange={(e) => update('wind_tunnel.x_max', +e.target.value)} className="w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm" /></div>
-          <div><label className="block text-xs font-medium mb-1">Y Min (m)</label><input type="number" value={config.wind_tunnel.y_min} onChange={(e) => update('wind_tunnel.y_min', +e.target.value)} className="w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm" /></div>
-          <div><label className="block text-xs font-medium mb-1">Y Max (m)</label><input type="number" value={config.wind_tunnel.y_max} onChange={(e) => update('wind_tunnel.y_max', +e.target.value)} className="w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm" /></div>
-          <div><label className="block text-xs font-medium mb-1">Z Min (m)</label><input type="number" value={config.wind_tunnel.z_min} onChange={(e) => update('wind_tunnel.z_min', +e.target.value)} className="w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm" /></div>
-          <div><label className="block text-xs font-medium mb-1">Z Max (m)</label><input type="number" value={config.wind_tunnel.z_max} onChange={(e) => update('wind_tunnel.z_max', +e.target.value)} className="w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm" /></div>
+          <div>
+            <label className="block text-xs font-medium mb-1">Surface Skewness Threshold</label>
+            <input type="number" step="0.05" value={config.mesh_quality.surface_skewness_threshold} onChange={(e) => update('mesh_quality.surface_skewness_threshold', +e.target.value)} className="w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1">Volume Ortho-Quality Threshold</label>
+            <input type="number" step="0.01" value={config.mesh_quality.volume_orthogonal_quality_threshold} onChange={(e) => update('mesh_quality.volume_orthogonal_quality_threshold', +e.target.value)} className="w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-2 text-sm" />
+          </div>
+          <div className="flex items-end gap-2">
+            <input
+              id="mesh-auto-improve"
+              type="checkbox"
+              checked={config.mesh_quality.auto_improve}
+              onChange={(e) => update('mesh_quality.auto_improve', e.target.checked)}
+              className="h-4 w-4"
+            />
+            <label htmlFor="mesh-auto-improve" className="text-xs font-medium">
+              Auto-improve if over/under threshold
+            </label>
+          </div>
         </div>
       </section>
 

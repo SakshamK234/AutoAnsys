@@ -84,7 +84,7 @@ services:
       - ./backend/app:/app/app
       - ./backend/alembic:/app/alembic
       - ./backend/entrypoint.sh:/app/entrypoint.sh
-      # HPC: uncomment and mount your SSH private key; set CLUSTER_KEY_PATH to match (e.g. /root/.ssh/id_cluster)
+      # HPC: uncomment and mount your SSH private key; set CLUSTER_SSH_KEY_HOST_PATH in .env
       # - ${CLUSTER_SSH_KEY_HOST_PATH:?Set CLUSTER_SSH_KEY_HOST_PATH to your key file}:/root/.ssh/id_cluster:ro
 
   celery-worker:
@@ -110,7 +110,7 @@ services:
       FLUENT_MODULE: "${FLUENT_MODULE:-ANSYS/2025R1}"
     volumes:
       - ./backend/app:/app/app
-      # HPC: uncomment and mount your SSH private key (see backend service volumes)
+      # HPC: uncomment and mount your SSH private key; set CLUSTER_SSH_KEY_HOST_PATH in .env
       # - ${CLUSTER_SSH_KEY_HOST_PATH:?Set CLUSTER_SSH_KEY_HOST_PATH to your key file}:/root/.ssh/id_cluster:ro
     depends_on:
       postgres:
@@ -122,11 +122,23 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    command: celery -A app.tasks.celery_app beat --loglevel=info
+    # NOTE: --scheduler celery.beat.PersistentScheduler (the default) writes
+    # the schedule to celerybeat-schedule and IGNORES new beat_schedule entries
+    # added in code on subsequent restarts. Use the in-memory scheduler so any
+    # change to celery_app.conf.beat_schedule is picked up immediately on
+    # restart (e.g. when poll-active-meshes was added alongside poll-active-jobs).
+    command: celery -A app.tasks.celery_app beat --loglevel=info --scheduler celery.beat.Scheduler
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/autoansys
       REDIS_URL: redis://redis:6379/0
       CLUSTER_MOCK_MODE: "${CLUSTER_MOCK_MODE:-true}"
+    # Live-mount the backend source so beat sees code changes (new schedule
+    # entries, task modules) without rebuilding the image. Without this mount,
+    # beat runs the snapshot from `docker compose build` and silently misses
+    # any task added later — e.g. poll-active-meshes was registered in code
+    # but never fired because beat was using a pre-mesh image.
+    volumes:
+      - ./backend/app:/app/app
     depends_on:
       redis:
         condition: service_healthy

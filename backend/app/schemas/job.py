@@ -10,10 +10,16 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class LocalSizingRegion(BaseModel):
-    """A single body-of-influence or face sizing region."""
+    """A single body-of-influence or face sizing region.
+
+    Categories match the FSAE SOPs:
+      - aero / chassis / wheels / intake  (local sizings, SOP Individual Part + Kevin Full Car)
+      - nearfield / farfield / rear_wing  (local refinement regions, Kevin Full Car)
+    """
 
     name: str
     type: str = "body_of_influence"  # body_of_influence | face_sizing
+    category: str | None = None  # aero | chassis | wheels | intake | nearfield | farfield | rear_wing
     size: float = 0.02
     growth_rate: float = 1.2
     # BOI-specific
@@ -28,8 +34,10 @@ class LocalSizingRegion(BaseModel):
 
 
 class SurfaceMeshConfig(BaseModel):
-    min_size: float = 0.002
-    max_size: float = 0.1
+    # Sizes are interpreted in the MeshConfig.geometry_unit (default mm).
+    # Reference journal (SOP) used MinSize=2 mm, MaxSize=264 mm.
+    min_size: float = 2.0
+    max_size: float = 264.0
     curvature_normal_angle: float = 18.0
     growth_rate: float = 1.2
 
@@ -52,12 +60,55 @@ class WindTunnelConfig(BaseModel):
     z_max: float = 3.0
 
 
+class EnclosureConfig(BaseModel):
+    """Documentation-only record of the enclosure the user built in Discovery.
+
+    Per the FSAE SOP, the enclosure is created IN DISCOVERY before exporting the
+    Parasolid — Fluent Meshing does NOT run a capping step. These values are
+    captured here for auditability / sweep reproducibility, not to drive Fluent.
+
+    Defaults from CFD_SOP (Individual Part): back 8000, front 1000, rest 2500 mm.
+    Kevin Full Car reference also uses front 1000.
+    """
+
+    back_mm: float = 8000.0
+    front_mm: float = 1000.0
+    top_mm: float = 2500.0
+    bottom_mm: float = 2500.0
+    left_mm: float = 2500.0
+    right_mm: float = 2500.0
+    # Direction the car nose points along (informational).
+    flow_axis: str = "+x"
+
+
+class MeshQuality(BaseModel):
+    """Mesh quality thresholds with optional auto-improve (per SOP)."""
+
+    surface_skewness_threshold: float = 0.6
+    volume_orthogonal_quality_threshold: float = 0.15
+    auto_improve: bool = True
+
+
 class MeshConfig(BaseModel):
     local_sizing: list[LocalSizingRegion] = []
     surface_mesh: SurfaceMeshConfig = Field(default_factory=SurfaceMeshConfig)
     volume_mesh: VolumeMeshConfig = Field(default_factory=VolumeMeshConfig)
     wind_tunnel: WindTunnelConfig = Field(default_factory=WindTunnelConfig)
-    geometry_unit: str = "m"
+    enclosure: EnclosureConfig | None = Field(default_factory=EnclosureConfig)
+    mesh_quality: MeshQuality = Field(default_factory=MeshQuality)
+    geometry_unit: str = "mm"
+    # Face labels the user applied in Discovery to the Parasolid export.
+    # Passed as Generate Surface Mesh `OriginalZones` so Fluent preserves them
+    # through meshing. Matches the FSAE SOP convention exactly.
+    original_zones: list[str] = Field(
+        default_factory=lambda: [
+            "inlet",
+            "outlet",
+            "ground",
+            "symmetry",
+            "walls",
+        ]
+    )
 
 
 # ── Solver Configuration ─────────────────────────────────────────────────
@@ -72,36 +123,96 @@ class GeneralSolverConfig(BaseModel):
 class TurbulenceConfig(BaseModel):
     model: str = "k-omega-sst"
     near_wall_treatment: str = "auto"
+    # Per Kevin Full Car + Individual Part SOPs: enable curvature correction on k-omega SST.
+    curvature_correction: bool = True
 
 
-class InletBC(BaseModel):
+# ── Boundary-condition primitives ────────────────────────────────────
+# Each BC is a single zone assignment; `BoundaryConditions` holds a list per
+# kind. This generalises across CFD modes — a wing test uses inlet+outlet+
+# walls+symmetry, a full-car run uses inlet+rotating-wheels+slip-walls+ground,
+# both share the same shape and journal-rendering loop.
+
+
+class VelocityInletBC(BaseModel):
+    """A velocity inlet. Defaults match the FSAE SOP freestream (15.65 m/s).
+
+    `turbulent_intensity_pct` is in percent (Fluent TUI takes the raw "5"
+    not "0.05") to mirror the working CFD-specialist script.
+    """
     zone_name: str = "inlet"
-    velocity: float = 20.0
-    turbulent_intensity: float = 0.01
+    velocity: float = 15.65
+    turbulent_intensity_pct: float = 5.0
     turbulent_viscosity_ratio: float = 10.0
 
 
-class OutletBC(BaseModel):
+class PressureOutletBC(BaseModel):
     zone_name: str = "outlet"
     gauge_pressure: float = 0.0
 
 
-class GroundBC(BaseModel):
-    zone_name: str = "ground"
-    type: str = "moving-wall"
-    velocity: float = 20.0
+class TranslatingWallBC(BaseModel):
+    """No-slip wall translating at a constant velocity (e.g. moving ground)."""
+    zone_name: str
+    velocity_mps: float = 15.65
+    # SOP ground motion direction: -x.
+    direction_x: float = -1.0
+    direction_y: float = 0.0
+    direction_z: float = 0.0
 
 
-class SymmetryBC(BaseModel):
-    zone_names: list[str] = ["symmetry-top", "symmetry-side-1", "symmetry-side-2"]
-    type: str = "symmetry"
+class RotatingWallBC(BaseModel):
+    """Rotating wall — used for wheels in the full-car workflow.
+
+    Each wheel carries its own pivot origin so the front- and rear-tire
+    rotations are placed correctly. Kevin reference: 77 rad/s about +y.
+    """
+    zone_name: str
+    omega_rad_s: float = 77.0
+    origin_x: float = 0.0
+    origin_y: float = 0.0
+    origin_z: float = 0.0
+    axis_x: float = 0.0
+    axis_y: float = 1.0
+    axis_z: float = 0.0
+
+
+class SlipWallBC(BaseModel):
+    """Specified-shear wall (zero shear stress) — i.e. a slip wall.
+
+    Used for tunnel side/top walls and contact patches in the full-car SOP,
+    where the wall is geometrically present but should not impart shear on
+    the flow.
+    """
+    zone_name: str
+
+
+class StationaryWallBC(BaseModel):
+    """No-slip stationary wall (Fluent's default wall behaviour).
+
+    Listing a zone here just records intent / forces zone-type=wall; you
+    do not normally need to enumerate the car body here because Fluent
+    types unlabelled face zones as walls automatically.
+    """
+    zone_name: str
+
+
+class SymmetryPlaneBC(BaseModel):
+    zone_name: str
 
 
 class BoundaryConditions(BaseModel):
-    inlet: InletBC = Field(default_factory=InletBC)
-    outlet: OutletBC = Field(default_factory=OutletBC)
-    ground: GroundBC = Field(default_factory=GroundBC)
-    symmetry: SymmetryBC = Field(default_factory=SymmetryBC)
+    """Typed lists of BCs. Empty lists are skipped by the solver journal.
+
+    Per-mode presets live in ``apply_cfd_mode_defaults`` below.
+    """
+    velocity_inlets: list[VelocityInletBC] = Field(default_factory=list)
+    pressure_outlets: list[PressureOutletBC] = Field(default_factory=list)
+    translating_walls: list[TranslatingWallBC] = Field(default_factory=list)
+    rotating_walls: list[RotatingWallBC] = Field(default_factory=list)
+    slip_walls: list[SlipWallBC] = Field(default_factory=list)
+    stationary_walls: list[StationaryWallBC] = Field(default_factory=list)
+    symmetry_planes: list[SymmetryPlaneBC] = Field(default_factory=list)
 
 
 class SolutionMethods(BaseModel):
@@ -113,9 +224,23 @@ class SolutionMethods(BaseModel):
     specific_dissipation_rate: str = "second-order-upwind"
 
 
+class ReferenceValues(BaseModel):
+    """Physics reference values used by the solver.
+
+    Defaults from Kevin Full Car reference:
+      area 1.2 m², length 2.8 m, velocity 15.65 m/s.
+    """
+
+    area_m2: float = 1.2
+    length_m: float = 2.8
+    velocity_mps: float = 15.65
+
+
 class ConvergenceConfig(BaseModel):
     residual_target: float = 1e-4
-    max_iterations: int = 2000
+    # SOP individual part = 300 iters; full-car specialist script = 750.
+    # apply_cfd_mode_defaults() bumps this per mode.
+    max_iterations: int = 300
     force_monitor_window: int = 100
     force_monitor_tolerance: float = 0.001
 
@@ -134,6 +259,103 @@ class SolverConfig(BaseModel):
     solution_methods: SolutionMethods = Field(default_factory=SolutionMethods)
     convergence: ConvergenceConfig = Field(default_factory=ConvergenceConfig)
     data_export: DataExportConfig = Field(default_factory=DataExportConfig)
+    reference_values: ReferenceValues = Field(default_factory=ReferenceValues)
+    # "hybrid" → /solve/init/hyb-init (one-step; matches specialist script)
+    # "hybrid-absolute" → set absolute reference frame, then hyb-initialize
+    initialization: str = "hybrid"
+
+
+# ── Per-mode SOP defaults ────────────────────────────────────────────────
+
+
+def apply_cfd_mode_defaults(mode: str, sc: "SolverConfig") -> "SolverConfig":
+    """Fill in BCs / iterations / reference values that the SOP fixes per mode.
+
+    Only fills BoundaryConditions if all BC lists are empty — once the user
+    has customised any BC list, we leave it alone. This lets the wizard call
+    this function on every mode-change as a "load preset" without clobbering
+    a user who has already tweaked things.
+
+    full_car preset mirrors the specialist's working TUI script exactly:
+      inlet (15.65 m/s, 5%/10), front-tire & rear-tire @ 77 rad/s with the
+      Max-Squat origins, ground translating at -15.65 m/s in -x, tunnel-walls
+      and contact-patches as slip (specified-shear) walls.
+      Reference area 0.65 m², iterations 750.
+
+    individual_part preset is the FSAE Individual Part SOP:
+      inlet, outlet, ground (moving), walls (no-slip), symmetry plane.
+      Reference area 1.2 m², iterations 300.
+    """
+    bc = sc.boundary_conditions
+    is_empty = not any([
+        bc.velocity_inlets, bc.pressure_outlets, bc.translating_walls,
+        bc.rotating_walls, bc.slip_walls, bc.stationary_walls, bc.symmetry_planes,
+    ])
+
+    if mode == "full_car":
+        if is_empty:
+            sc.boundary_conditions = BoundaryConditions(
+                velocity_inlets=[
+                    VelocityInletBC(
+                        zone_name="inlet",
+                        velocity=15.65,
+                        turbulent_intensity_pct=5.0,
+                        turbulent_viscosity_ratio=10.0,
+                    ),
+                ],
+                translating_walls=[
+                    TranslatingWallBC(
+                        zone_name="ground",
+                        velocity_mps=15.65,
+                        direction_x=-1.0,
+                    ),
+                ],
+                rotating_walls=[
+                    # Specialist's Max-Squat origins (m), axis +y, ω 77 rad/s.
+                    RotatingWallBC(
+                        zone_name="front-tire",
+                        omega_rad_s=77.0,
+                        origin_x=0.8264, origin_y=0.6125, origin_z=0.1998,
+                        axis_y=1.0,
+                    ),
+                    RotatingWallBC(
+                        zone_name="rear-tire",
+                        omega_rad_s=77.0,
+                        origin_x=-0.7056, origin_y=0.6125, origin_z=0.1998,
+                        axis_y=1.0,
+                    ),
+                ],
+                slip_walls=[
+                    SlipWallBC(zone_name="tunnel-walls"),
+                    SlipWallBC(zone_name="contact-patches"),
+                ],
+            )
+        # Reference area for the full car (specialist script: 0.65).
+        if sc.reference_values.area_m2 == 1.2:
+            sc.reference_values.area_m2 = 0.65
+        # Iteration count from the specialist's working journal.
+        if sc.convergence.max_iterations in (300, 3000):
+            sc.convergence.max_iterations = 750
+
+    elif mode == "individual_part":
+        if is_empty:
+            sc.boundary_conditions = BoundaryConditions(
+                velocity_inlets=[VelocityInletBC()],  # zone_name="inlet"
+                pressure_outlets=[PressureOutletBC()],  # zone_name="outlet"
+                translating_walls=[
+                    TranslatingWallBC(
+                        zone_name="ground",
+                        velocity_mps=15.65,
+                        direction_x=-1.0,
+                    ),
+                ],
+                stationary_walls=[StationaryWallBC(zone_name="walls")],
+                symmetry_planes=[SymmetryPlaneBC(zone_name="symmetry")],
+            )
+        if sc.convergence.max_iterations == 750:
+            sc.convergence.max_iterations = 300
+
+    return sc
 
 
 # ── SLURM Configuration ──────────────────────────────────────────────────
@@ -156,6 +378,13 @@ class JobCreate(BaseModel):
     geometry_id: uuid.UUID
     name: str
     group_id: uuid.UUID | None = None
+    # SOP mode: drives defaults (iterations, wheel BCs, local-sizing categories).
+    cfd_mode: str = "individual_part"  # "individual_part" | "full_car"
+    # Either reference an existing completed Mesh (split workflow) OR provide
+    # a mesh_config to auto-create one (mesh-reuse via config hash). Exactly
+    # one of these should be set; if both are null we fall back to legacy
+    # combined-mode (single journal does mesh + solve).
+    mesh_id: uuid.UUID | None = None
     mesh_config: MeshConfig = Field(default_factory=MeshConfig)
     solver_config: SolverConfig = Field(default_factory=SolverConfig)
     slurm_config: SlurmConfig = Field(default_factory=SlurmConfig)
@@ -178,6 +407,9 @@ class JobResponse(BaseModel):
     group_id: uuid.UUID | None = None
     group_name: str | None = None
     owner_name: str | None = None
+    mesh_id: uuid.UUID | None = None
+    # Compact mesh info (name, status, cell_count) — populated by the API layer.
+    mesh: dict | None = None
     created_at: datetime
 
 
@@ -237,6 +469,7 @@ class SweepCreate(BaseModel):
     geometry_id: uuid.UUID
     base_name: str  # e.g. "Wing Sweep"
     group_id: uuid.UUID | None = None
+    cfd_mode: str = "individual_part"  # "individual_part" | "full_car"
     mesh_config: MeshConfig = Field(default_factory=MeshConfig)
     solver_config: SolverConfig = Field(default_factory=SolverConfig)
     slurm_config: SlurmConfig = Field(default_factory=SlurmConfig)

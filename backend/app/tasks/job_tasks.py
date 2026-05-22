@@ -81,17 +81,26 @@ def _publish_job_event(job_id: str, event_type: str, data: dict) -> None:
 def submit_job_to_cluster(self, job_id: str) -> dict:
     """Submit a queued job to the HPC cluster (background Celery task).
 
-    Performs the full pipeline: S3 download → journal gen → SFTP → sbatch.
-    Called asynchronously after JobService.submit_job() marks the job as queued.
+    Two code paths:
+      • Job.mesh_id is NULL  → legacy combined journal (mesh + solve in one run).
+      • Job.mesh_id is SET   → solver-from-case journal; the mesh.cas.h5 is
+                               copied from the referenced Mesh.cluster_workspace
+                               into this job's workspace via `cp` on the cluster.
     """
     logger.info("Submitting job %s to cluster (Celery task)", job_id)
 
     with SyncSessionLocal() as db:
         from app.models.geometry import Geometry
+        from app.models.mesh import Mesh, MeshStatus
 
         job = db.query(Job).filter(Job.id == uuid.UUID(job_id)).first()
         if not job:
             return {"job_id": job_id, "error": "Job not found"}
+
+        if job.status == JobStatus.draft:
+            # Enqueue-before-commit race; retry once the API commit is visible.
+            logger.warning("Job %s still in draft — retrying in 2s (commit-race)", job_id)
+            raise self.retry(countdown=2, max_retries=3)
 
         if job.status != JobStatus.queued:
             return {"job_id": job_id, "error": f"Job is in '{job.status.value}' state, expected queued"}
@@ -103,6 +112,23 @@ def submit_job_to_cluster(self, job_id: str) -> dict:
             _publish_job_event(job_id, "status_update", {"status": "failed"})
             return {"job_id": job_id, "error": "Geometry not found"}
 
+        mesh = None
+        if job.mesh_id:
+            mesh = db.query(Mesh).filter(Mesh.id == job.mesh_id).first()
+            if not mesh:
+                job.status = JobStatus.failed
+                db.commit()
+                _publish_job_event(job_id, "status_update", {"status": "failed"})
+                return {"job_id": job_id, "error": "Referenced mesh not found"}
+            if mesh.status != MeshStatus.completed or not mesh.cluster_workspace:
+                job.status = JobStatus.failed
+                db.commit()
+                _publish_job_event(job_id, "status_update", {"status": "failed"})
+                return {
+                    "job_id": job_id,
+                    "error": f"Referenced mesh is in '{mesh.status.value}' state; must be completed",
+                }
+
         workspace = f"{settings.CLUSTER_WORKSPACE_BASE}/{job.id}"
         job.cluster_workspace = workspace
 
@@ -112,36 +138,71 @@ def submit_job_to_cluster(self, job_id: str) -> dict:
         ssh = None
         tmpdir = None
         try:
-            tmpdir = tempfile.mkdtemp(prefix="autoansys_")
-            local_geom_path = os.path.join(tmpdir, geom_filename)
-            s3 = _get_s3_client()
-            s3.download_file(settings.S3_BUCKET, geometry.s3_key, local_geom_path)
-
             from app.journal.generator import JournalGenerator
             gen = JournalGenerator()
 
-            combined_jou = gen.generate_combined_journal(
-                mesh_config=job.config["mesh"],
-                solver_config=job.config["solver"],
-                geometry_file=f"{workspace}/{geom_filename}",
-                workspace=workspace,
-            )
-            slurm_sh = gen.generate_slurm_script(
-                job.config["slurm"],
-                workspace=workspace,
-                fluent_module=settings.FLUENT_MODULE,
-            )
-
             ssh, slurm_mgr = _get_cluster_managers()
-
             from app.cluster.sftp import SFTPManager
             sftp_client = ssh.open_sftp()
             sftp = SFTPManager(sftp_client)
 
-            sftp.upload_file(local_geom_path, f"{workspace}/{geom_filename}")
-            sftp.upload_string(combined_jou, f"{workspace}/autoansys.jou")
-            sftp.upload_string(slurm_sh, f"{workspace}/run.sh")
-            sftp.close()
+            if mesh is not None:
+                # SPLIT PATH — solver reads an existing mesh.cas.h5
+                solver_jou = gen.generate_solver_journal(
+                    solver_config=job.config["solver"],
+                    case_file=f"{workspace}/mesh.cas.h5",
+                    workspace=workspace,
+                    cfd_mode=job.config.get("cfd_mode", "individual_part"),
+                )
+                slurm_sh = gen.generate_slurm_script(
+                    job.config["slurm"],
+                    workspace=workspace,
+                    fluent_module=settings.FLUENT_MODULE,
+                    # Solver-from-case journal expects /define/... TUI paths,
+                    # which only exist when Fluent starts in solution mode.
+                    start_mode="solver",
+                )
+
+                sftp.upload_string(solver_jou, f"{workspace}/autoansys.jou")
+                sftp.upload_string(slurm_sh, f"{workspace}/run.sh")
+                sftp.close()
+
+                # Copy the mesh case file from the referenced Mesh's workspace
+                # into this job's workspace. `cp` on the cluster avoids shipping
+                # a multi-GB .cas.h5 back through our API host.
+                if not settings.CLUSTER_MOCK_MODE:
+                    src = f"{mesh.cluster_workspace}/mesh.cas.h5"
+                    dst = f"{workspace}/mesh.cas.h5"
+                    ssh.execute_command(f"mkdir -p {workspace}")
+                    out, err, code = ssh.execute_command(f"cp -f {src} {dst}")
+                    if code != 0:
+                        raise RuntimeError(
+                            f"Failed to copy mesh case file on cluster (exit {code}): {err}"
+                        )
+            else:
+                # LEGACY PATH — combined meshing + solver in a single journal
+                tmpdir = tempfile.mkdtemp(prefix="autoansys_")
+                local_geom_path = os.path.join(tmpdir, geom_filename)
+                s3 = _get_s3_client()
+                s3.download_file(settings.S3_BUCKET, geometry.s3_key, local_geom_path)
+
+                combined_jou = gen.generate_combined_journal(
+                    mesh_config=job.config["mesh"],
+                    solver_config=job.config["solver"],
+                    geometry_file=f"{workspace}/{geom_filename}",
+                    workspace=workspace,
+                    cfd_mode=job.config.get("cfd_mode", "individual_part"),
+                )
+                slurm_sh = gen.generate_slurm_script(
+                    job.config["slurm"],
+                    workspace=workspace,
+                    fluent_module=settings.FLUENT_MODULE,
+                )
+
+                sftp.upload_file(local_geom_path, f"{workspace}/{geom_filename}")
+                sftp.upload_string(combined_jou, f"{workspace}/autoansys.jou")
+                sftp.upload_string(slurm_sh, f"{workspace}/run.sh")
+                sftp.close()
 
             slurm_job_id = slurm_mgr.submit_job(f"{workspace}/run.sh")
             job.slurm_job_id = slurm_job_id

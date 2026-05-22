@@ -1,12 +1,13 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ResidualChart } from '@/components/jobs/residual-chart';
 import { ForceChart } from '@/components/jobs/force-chart';
 import { JobStatusBadge } from '@/components/jobs/job-status-badge';
 import { useJob, useJobForces, useJobResiduals, useCancelJob, useSyncJobStatus } from '@/hooks/use-jobs';
+import { useWebSocket } from '@/hooks/use-websocket';
 import { cn, formatDate, formatFileSize } from '@/lib/utils';
-import { ArrowLeft, XCircle, Download, FileIcon, FileText, Image } from 'lucide-react';
+import { ArrowLeft, XCircle, Download, FileIcon, FileText, Image, Radio, RefreshCw } from 'lucide-react';
 import api from '@/lib/api';
 
 interface ResultFile {
@@ -29,9 +30,13 @@ const FILE_TYPE_LABELS: Record<string, string> = {
 
 const CONTOUR_LABELS: Record<string, string> = {
   'contour_velocity.png': 'Velocity Magnitude',
+  'contour_velocity_midplane.png': 'Velocity (Mid-plane)',
   'contour_pressure.png': 'Static Pressure',
+  'contour_pressure_midplane.png': 'Pressure (Mid-plane)',
   'contour_total_pressure.png': 'Total Pressure',
+  'contour_cp.png': 'Pressure Coefficient (Cp)',
   'contour_wall_shear.png': 'Wall Shear Stress',
+  'contour_tke_midplane.png': 'Turbulent Kinetic Energy (Mid-plane)',
 };
 
 const tabs = ['Overview', 'Residuals', 'Forces', 'Contours', 'Files', 'Config'] as const;

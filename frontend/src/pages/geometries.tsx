@@ -45,11 +45,11 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
               <div className="text-center">
                 <ArrowUpFromLine className="mx-auto h-6 w-6 text-[hsl(var(--muted-foreground))] mb-2" />
                 <p className="text-sm font-medium">{file ? file.name : 'Choose a file'}</p>
-                <p className="text-xs text-[hsl(var(--muted-foreground))]">.stp, .step, .igs, .iges, .dsco</p>
+                <p className="text-xs text-[hsl(var(--muted-foreground))]">.stp, .step, .igs, .iges, .x_t, .x_b, .xmt_txt, .xmt_bin, .dsco</p>
               </div>
               <input
                 type="file"
-                accept=".stp,.step,.igs,.iges,.dsco"
+                accept=".stp,.step,.igs,.iges,.x_t,.x_b,.xmt_txt,.xmt_bin,.dsco"
                 className="hidden"
                 onChange={(e) => setFile(e.target.files?.[0] || null)}
               />
@@ -78,11 +78,30 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
             />
           </div>
 
-          {upload.isError && (
-            <div className="rounded-lg bg-rose-500/10 border border-rose-500/20 p-3 text-sm text-rose-500">
-              Upload failed. Check file format and try again.
-            </div>
-          )}
+          {upload.isError && (() => {
+            const err = upload.error as { response?: { status?: number; data?: { detail?: unknown } }; message?: string } | null;
+            const status = err?.response?.status;
+            const rawDetail = err?.response?.data?.detail;
+            // FastAPI 422 returns detail as an array of { loc, msg, type, ... }.
+            // Flatten to a readable string so React doesn't crash on objects.
+            let message: string;
+            if (typeof rawDetail === 'string') {
+              message = rawDetail;
+            } else if (Array.isArray(rawDetail)) {
+              message = rawDetail
+                .map((d: any) => d?.msg ? `${(d.loc || []).slice(1).join('.')}: ${d.msg}` : JSON.stringify(d))
+                .join('; ');
+            } else if (rawDetail && typeof rawDetail === 'object') {
+              message = JSON.stringify(rawDetail);
+            } else {
+              message = err?.message || 'Upload failed.';
+            }
+            return (
+              <div className="rounded-lg bg-rose-500/10 border border-rose-500/20 p-3 text-sm text-rose-500">
+                {status ? `${status}: ` : ''}{message}
+              </div>
+            );
+          })()}
 
           <div className="flex gap-2 justify-end">
             <button type="button" onClick={onClose} className="rounded-lg border border-[hsl(var(--border))] px-4 py-2 text-sm font-medium hover:bg-[hsl(var(--accent))] transition-colors">
@@ -145,7 +164,7 @@ export function GeometriesPage() {
             </div>
             <p className="text-lg font-semibold">No geometries uploaded yet</p>
             <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1 max-w-xs text-center">
-              Upload .stp, .igs, or .dsco CAD files to use them in your simulations
+              Upload STEP, IGES, Parasolid (.x_t/.x_b), or Discovery (.dsco) files — the SOPs recommend Parasolid
             </p>
             <button
               onClick={() => setUploadOpen(true)}

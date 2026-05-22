@@ -7,13 +7,19 @@ import {
   FileText,
   Wind,
   Settings,
+  GitCompareArrows,
+  Layers,
+  Grid3x3,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const mainNav = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/new-job', icon: Plus, label: 'New Simulation' },
+  { to: '/sweep', icon: Layers, label: 'Parametric Sweep' },
   { to: '/jobs', icon: List, label: 'Jobs' },
+  { to: '/meshes', icon: Grid3x3, label: 'Meshes' },
+  { to: '/compare', icon: GitCompareArrows, label: 'Compare' },
 ];
 
 const libraryNav = [
