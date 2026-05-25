@@ -318,6 +318,10 @@ def download_mesh_artifact(mesh_id: str) -> dict:
         s3_key = f"meshes/{mesh.id}/mesh.cas.h5"
 
         try:
+            output_path = (mesh.config or {}).get("output_path")
+            if output_path:
+                output_path = output_path.replace("<username>", settings.CLUSTER_USER)
+
             if settings.CLUSTER_MOCK_MODE:
                 # Mock: no real case file, just mark the key and a fake cell count
                 # so the UI has something to show.
@@ -339,6 +343,26 @@ def download_mesh_artifact(mesh_id: str) -> dict:
                     sftp.download_file(remote_case, local_case)
                     s3.upload_file(local_case, settings.S3_BUCKET, s3_key)
                     mesh.case_file_s3_key = s3_key
+
+                    # Copy the case file to the user-specified location on the
+                    # cluster. Use shlex.quote for the destination so a path
+                    # like /home/foo/my mesh/ can't break out into a second
+                    # command — the schema layer already restricted the
+                    # character set, but defence-in-depth.
+                    if output_path:
+                        import shlex
+                        dest_dir = shlex.quote(output_path.rstrip("/") + "/")
+                        dest_file = shlex.quote(
+                            output_path.rstrip("/") + f"/{mesh.name}.cas.h5"
+                        )
+                        src = shlex.quote(remote_case)
+                        cmd = f"mkdir -p {dest_dir} && cp {src} {dest_file}"
+                        _, err, code = ssh.execute_command(cmd)
+                        if code != 0:
+                            logger.warning(
+                                "Mesh copy to %s failed (rc=%s): %s",
+                                output_path, code, err,
+                            )
 
                     # Pull fluent.log for cell count parsing.
                     local_log = os.path.join(tmpdir, "fluent.log")

@@ -29,9 +29,11 @@ interface GeometryStepProps {
   setWorkflowMode: (mode: WorkflowMode) => void;
   meshId: string;
   setMeshId: (id: string) => void;
+  outputPath: string;
+  setOutputPath: (path: string) => void;
 }
 
-export function GeometryStep({ name, setName, geometryId, setGeometryId, groupId, setGroupId, cfdMode, setCfdMode, workflowMode, setWorkflowMode, meshId, setMeshId }: GeometryStepProps) {
+export function GeometryStep({ name, setName, geometryId, setGeometryId, groupId, setGroupId, cfdMode, setCfdMode, workflowMode, setWorkflowMode, meshId, setMeshId, outputPath, setOutputPath }: GeometryStepProps) {
   const navigate = useNavigate();
   const { data, isLoading } = useGeometries();
   const geometries = data?.items ?? [];
@@ -124,6 +126,26 @@ export function GeometryStep({ name, setName, geometryId, setGeometryId, groupId
           ))}
         </div>
       </div>
+
+      {/* Output Path — only for Mesh Only */}
+      {workflowMode === 'mesh_only' && (
+        <div>
+          <label className="block text-sm font-medium mb-1">
+            Mesh Output Path on HPC <span className="text-rose-500">*</span>
+          </label>
+          <p className="text-xs text-[hsl(var(--muted-foreground))] mb-2">
+            Directory on the cluster where <code>mesh.cas.h5</code> is copied after meshing completes.
+            The token <code>&lt;username&gt;</code> is replaced with your cluster account.
+          </p>
+          <input
+            type="text"
+            value={outputPath}
+            onChange={(e) => setOutputPath(e.target.value)}
+            placeholder="/home/<username>/"
+            className="w-full rounded-lg border border-[hsl(var(--input))] bg-[hsl(var(--card))] px-3 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]"
+          />
+        </div>
+      )}
 
       {/* Mesh picker — only for Solve from Mesh */}
       {workflowMode === 'solve_from_mesh' && (

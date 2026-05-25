@@ -1,5 +1,6 @@
 import { Navigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/auth-store';
+import { ThemeMenu } from '@/components/layout/theme-menu';
 import { LoginForm } from '@/components/auth/login-form';
 import { Wind, Cpu, Gauge, Layers } from 'lucide-react';
 
@@ -63,7 +64,10 @@ export function LoginPage() {
       </div>
 
       {/* Form panel */}
-      <div className="flex flex-1 flex-col items-center justify-center bg-[hsl(var(--background))] p-8">
+      <div className="relative flex flex-1 flex-col items-center justify-center bg-[hsl(var(--background))] p-8">
+        <div className="absolute top-4 right-4">
+          <ThemeMenu />
+        </div>
         <div className="w-full max-w-sm animate-fade-in">
           <LoginForm />
         </div>

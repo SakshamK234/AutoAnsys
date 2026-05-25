@@ -15,6 +15,10 @@ class MeshCreate(BaseModel):
     cfd_mode: str = "individual_part"  # drives Fluent defaults inside the template
     mesh_config: MeshConfig = Field(default_factory=MeshConfig)
     slurm_config: SlurmConfig = Field(default_factory=SlurmConfig)
+    # Destination directory on the HPC where mesh.cas.h5 should be copied
+    # after the SLURM job completes. The literal token "<username>" is
+    # substituted with the configured CLUSTER_USER at submit time.
+    output_path: str | None = None
 
 
 class MeshResponse(BaseModel):

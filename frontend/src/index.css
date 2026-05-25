@@ -45,6 +45,48 @@
   --ring: 33 100% 50%;
 }
 
+/* Blue color scheme */
+[data-theme="blue"] {
+  --primary: 217 91% 55%;
+  --primary-foreground: 210 40% 98%;
+  --muted-foreground: 217 10% 42%;
+  --ring: 217 91% 55%;
+  --border: 214 20% 88%;
+  --input: 214 20% 88%;
+}
+
+.dark[data-theme="blue"] {
+  --primary: 217 100% 62%;
+  --primary-foreground: 222 47% 6%;
+  --muted-foreground: 215 16% 65%;
+  --ring: 217 100% 62%;
+  --background: 222 47% 6%;
+  --card: 217 33% 10%;
+  --border: 217 25% 16%;
+  --input: 217 25% 16%;
+}
+
+/* Green color scheme */
+[data-theme="green"] {
+  --primary: 142 76% 40%;
+  --primary-foreground: 138 76% 97%;
+  --muted-foreground: 142 8% 42%;
+  --ring: 142 76% 40%;
+  --border: 140 12% 88%;
+  --input: 140 12% 88%;
+}
+
+.dark[data-theme="green"] {
+  --primary: 142 70% 48%;
+  --primary-foreground: 144 61% 6%;
+  --muted-foreground: 140 10% 64%;
+  --ring: 142 70% 48%;
+  --background: 144 61% 5%;
+  --card: 142 30% 9%;
+  --border: 142 20% 15%;
+  --input: 142 20% 15%;
+}
+
 * {
   border-color: hsl(var(--border));
 }

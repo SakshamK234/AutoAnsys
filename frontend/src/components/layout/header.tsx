@@ -1,7 +1,8 @@
-import { Moon, Sun, LogOut, Search, User } from 'lucide-react';
+import { LogOut, Search, User } from 'lucide-react';
+import { ThemeMenu } from '@/components/layout/theme-menu';
 import { useAuthStore } from '@/stores/auth-store';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -15,13 +16,7 @@ export function Header() {
   const { user, isGuest, logout } = useAuthStore();
   const location = useLocation();
   const navigate = useNavigate();
-  const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'));
   const [searchQuery, setSearchQuery] = useState('');
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', dark);
-    localStorage.setItem('theme', dark ? 'dark' : 'light');
-  }, [dark]);
 
   const handleSearch = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -53,12 +48,7 @@ export function Header() {
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        <button
-          onClick={() => setDark(!dark)}
-          className="rounded-lg p-1.5 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))] transition-colors"
-        >
-          {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-        </button>
+        <ThemeMenu />
 
         <div className="h-6 w-px bg-[hsl(var(--border))]" />
 

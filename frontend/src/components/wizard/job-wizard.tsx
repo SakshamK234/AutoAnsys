@@ -53,6 +53,7 @@ export function JobWizard() {
   const [cfdMode, setCfdMode] = useState<CfdMode>('individual_part');
   const [workflowMode, setWorkflowMode] = useState<WorkflowMode>('combined');
   const [meshId, setMeshId] = useState('');
+  const [outputPath, setOutputPath] = useState('/home/<username>/');
 
   const STEPS =
     workflowMode === 'mesh_only'
@@ -128,6 +129,7 @@ export function JobWizard() {
           cfd_mode: cfdMode,
           mesh_config: meshConfig,
           slurm_config: slurmConfig,
+          output_path: outputPath,
         });
         const meshRecordId = res.data.id;
         setSubmitPhase('submitting');
@@ -245,6 +247,8 @@ export function JobWizard() {
             setWorkflowMode={handleWorkflowChange}
             meshId={meshId}
             setMeshId={setMeshId}
+            outputPath={outputPath}
+            setOutputPath={setOutputPath}
           />
         )}
         {STEPS[step] === 'Mesh' && <MeshConfigStep config={meshConfig} setConfig={setMeshConfig} />}

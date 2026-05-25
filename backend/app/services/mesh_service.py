@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 
@@ -85,10 +86,24 @@ class MeshService:
         mesh_dict = data.mesh_config.model_dump()
         config_hash = compute_mesh_config_hash(data.geometry_id, mesh_dict, data.cfd_mode)
 
+        output_path = (data.output_path or "/home/<username>/").strip()
+        if not output_path.startswith("/"):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Output path must be absolute (start with '/')",
+            )
+        # Allow only safe characters plus the literal "<username>" placeholder.
+        if not re.fullmatch(r"[a-zA-Z0-9/\-_.<>]+", output_path):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Output path contains unsafe characters",
+            )
+
         config = {
             "cfd_mode": data.cfd_mode,
             "mesh": mesh_dict,
             "slurm": data.slurm_config.model_dump(),
+            "output_path": output_path,
         }
 
         mesh = Mesh(
