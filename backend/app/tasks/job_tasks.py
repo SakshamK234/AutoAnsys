@@ -13,7 +13,10 @@ import tempfile
 import uuid
 from datetime import datetime, timezone
 
+import socket
+
 import boto3
+import paramiko
 import redis as sync_redis
 
 from app.config import settings
@@ -23,6 +26,16 @@ from app.models.result_file import ResultFile
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
+
+# Transient cluster-side errors (network blips, SSH timeouts) that should
+# trigger a Celery retry rather than permanently failing the job.
+_TRANSIENT_CLUSTER_ERRORS = (
+    socket.timeout,
+    TimeoutError,
+    ConnectionError,
+    paramiko.SSHException,
+)
+
 
 _SLURM_STATE_MAP = {
     "PENDING": JobStatus.queued,
@@ -216,6 +229,21 @@ def submit_job_to_cluster(self, job_id: str) -> dict:
             logger.info("Job %s submitted with SLURM ID %s", job.id, slurm_job_id)
             return {"job_id": job_id, "slurm_job_id": slurm_job_id, "status": "queued"}
 
+        except _TRANSIENT_CLUSTER_ERRORS as exc:
+            # Transient ARC outage — don't burn the job. Release SSH/tmp in
+            # the finally block, then ask Celery to requeue.
+            logger.warning(
+                "Transient cluster error submitting job %s: %s — retrying",
+                job_id, exc,
+            )
+            if ssh and not settings.CLUSTER_MOCK_MODE:
+                ssh.close()
+                ssh = None
+            if tmpdir:
+                import shutil
+                shutil.rmtree(tmpdir, ignore_errors=True)
+                tmpdir = None
+            raise self.retry(exc=exc, countdown=60)
         except Exception as exc:
             logger.exception("Failed to submit job %s", job_id)
             job.status = JobStatus.failed
@@ -257,7 +285,9 @@ def poll_active_jobs() -> dict:
 
                 try:
                     status_info = slurm_mgr.get_job_status(job.slurm_job_id)
-                    slurm_state = status_info.get("state", "UNKNOWN").strip()
+                    raw_state = status_info.get("state", "UNKNOWN").strip()
+                    # sacct emits "CANCELLED by <uid>" — keep only the verb.
+                    slurm_state = raw_state.split()[0] if raw_state else raw_state
                     new_status = _SLURM_STATE_MAP.get(slurm_state)
 
                     if new_status is None:

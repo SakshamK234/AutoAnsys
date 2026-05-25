@@ -5,11 +5,13 @@ from __future__ import annotations
 import logging
 import os
 import re
+import socket
 import tempfile
 import uuid
 from datetime import datetime, timezone
 
 import boto3
+import paramiko
 import redis as sync_redis
 
 from app.config import settings
@@ -18,6 +20,14 @@ from app.models.mesh import Mesh, MeshStatus
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
+
+
+_TRANSIENT_CLUSTER_ERRORS = (
+    socket.timeout,
+    TimeoutError,
+    ConnectionError,
+    paramiko.SSHException,
+)
 
 
 _MESH_SLURM_STATE_MAP = {
@@ -180,6 +190,19 @@ def submit_mesh_to_cluster(self, mesh_id: str) -> dict:
             logger.info("Mesh %s submitted with SLURM ID %s", mesh.id, slurm_job_id)
             return {"mesh_id": mesh_id, "slurm_job_id": slurm_job_id, "status": "queued"}
 
+        except _TRANSIENT_CLUSTER_ERRORS as exc:
+            logger.warning(
+                "Transient cluster error submitting mesh %s: %s — retrying",
+                mesh_id, exc,
+            )
+            if ssh and not settings.CLUSTER_MOCK_MODE:
+                ssh.close()
+                ssh = None
+            if tmpdir:
+                import shutil
+                shutil.rmtree(tmpdir, ignore_errors=True)
+                tmpdir = None
+            raise self.retry(exc=exc, countdown=60)
         except Exception as exc:
             logger.exception("Failed to submit mesh %s", mesh_id)
             mesh.status = MeshStatus.failed
@@ -224,7 +247,9 @@ def poll_active_meshes() -> dict:
                 try:
                     status_info = slurm_mgr.get_job_status(mesh.slurm_job_id)
                     raw_state = status_info.get("state", "UNKNOWN").strip()
-                    new_status = _MESH_SLURM_STATE_MAP.get(raw_state)
+                    # sacct emits "CANCELLED by <uid>" — keep only the verb.
+                    slurm_state = raw_state.split()[0] if raw_state else raw_state
+                    new_status = _MESH_SLURM_STATE_MAP.get(slurm_state)
 
                     if new_status is None:
                         logger.warning(
