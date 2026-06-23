@@ -10,9 +10,11 @@
 ; ════════════════════════════════════════════════════════════════════════
 
 ; ── Reference Values ──────────────────────────────────────────────────
+; density is required for physical force COEFFICIENTS (AUDIT C4 — was unset).
 /report/reference-values/area {{ solver.reference_values.area_m2 }}
 /report/reference-values/length {{ solver.reference_values.length_m }}
 /report/reference-values/velocity {{ solver.reference_values.velocity_mps }}
+/report/reference-values/density {{ solver.reference_values.density_kg_m3 | default(1.225) }}
 
 ; ── Turbulence Model ──────────────────────────────────────────────────
 {% if solver.turbulence.model == "k-omega-sst" %}

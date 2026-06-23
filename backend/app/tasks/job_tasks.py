@@ -481,22 +481,29 @@ def _download_real_results(db, job: Job, s3) -> int:
 
 
 def _generate_mock_forces_csv(iterations: int) -> str:
-    """Generate synthetic force coefficient data that looks like convergence."""
+    """Generate synthetic body FORCE data (N) that looks like convergence.
+
+    Matches the M2 journal output format: columns drag_force / lift_force / mom_y
+    are half-model forces in Newtons. The post-processor (app.post.forces) then
+    applies the symmetry factor and derives Cd/Cl/Cm, so mock results exercise the
+    same path as a real run.
+    """
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(["iteration", "cd", "cl", "cm"])
+    writer.writerow(["iteration", "drag_force", "lift_force", "mom_y"])
 
-    cd_final = 0.32 + random.uniform(-0.02, 0.02)
-    cl_final = -2.8 + random.uniform(-0.1, 0.1)
-    cm_final = -0.15 + random.uniform(-0.03, 0.03)
+    # Half-model magnitudes (N / N·m) for an FSAE car at ~15.65 m/s.
+    drag_final = 80.0 + random.uniform(-5.0, 5.0)
+    lift_final = -270.0 + random.uniform(-15.0, 15.0)   # negative = downforce
+    mom_final = -15.0 + random.uniform(-3.0, 3.0)
 
     for i in range(1, iterations + 1):
         progress = 1 - math.exp(-i / 300)
         noise = math.exp(-i / 500) * random.uniform(-0.1, 0.1)
-        cd = cd_final * progress + noise
-        cl = cl_final * progress + noise * 5
-        cm = cm_final * progress + noise * 0.5
-        writer.writerow([i, f"{cd:.6f}", f"{cl:.6f}", f"{cm:.6f}"])
+        drag = drag_final * progress + noise * 30
+        lift = lift_final * progress + noise * 100
+        mom = mom_final * progress + noise * 8
+        writer.writerow([i, f"{drag:.4f}", f"{lift:.4f}", f"{mom:.4f}"])
 
     return buf.getvalue()
 

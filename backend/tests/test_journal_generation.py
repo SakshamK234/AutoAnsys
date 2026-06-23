@@ -133,3 +133,47 @@ def test_reference_velocity_propagates(profile: str):
     solver = arts["solver_from_case.jou"]
     assert "/report/reference-values/velocity 15.65" in solver
     assert "velocity-inlet inlet" in solver
+
+
+# ── M2 correctness fixes (AUDIT C2/C3/C4/C5/C7) ───────────────────────────
+
+
+@pytest.mark.parametrize("profile", PROFILES)
+@pytest.mark.parametrize("journal", ("solver_from_case.jou", "combined.jou"))
+def test_reference_density_is_set(profile: str, journal: str):
+    # AUDIT C4: density is required for physical coefficients; it was never set.
+    assert "/report/reference-values/density" in render_profile_artifacts(profile)[journal]
+
+
+@pytest.mark.parametrize("profile", PROFILES)
+@pytest.mark.parametrize("journal", ("solver_from_case.jou", "combined.jou"))
+def test_forces_are_body_scoped_not_wildcard(profile: str, journal: str):
+    # AUDIT C3: force reports must target the body wall pattern, not all walls.
+    content = render_profile_artifacts(profile)[journal]
+    assert "thread-names wall-body*" in content
+    assert "thread-names * ()" not in content  # no force report over every wall
+
+
+@pytest.mark.parametrize("profile", PROFILES)
+def test_force_plateau_convergence_emitted(profile: str):
+    # AUDIT C5: the force-monitor window/tolerance are now wired into convergence.
+    content = render_profile_artifacts(profile)["solver_from_case.jou"]
+    assert "/solve/convergence-conditions/add" in content
+    assert "report-def drag_force" in content
+
+
+@pytest.mark.parametrize("profile", PROFILES)
+def test_combined_contour_surfaces_not_empty(profile: str):
+    # AUDIT C7: the combined journal used to render `surfaces  ()` (undefined
+    # zone vars). Every contour surface line must now name at least one surface.
+    content = render_profile_artifacts(profile)["combined.jou"]
+    for line in content.splitlines():
+        if line.startswith("/display/set/contours/surfaces"):
+            inner = line[len("/display/set/contours/surfaces"):].strip()
+            assert inner not in ("()", ""), f"empty contour surface line: {line!r}"
+
+
+def test_full_car_has_symmetry_plane():
+    # AUDIT C9: the half-car run must define a symmetry plane.
+    content = render_profile_artifacts("full_car")["solver_from_case.jou"]
+    assert "/define/boundary-conditions/zone-type symmetry symmetry" in content

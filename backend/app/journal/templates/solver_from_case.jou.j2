@@ -34,17 +34,8 @@
 /solve/set/discretization-scheme/epsilon {{ solver.solution_methods.specific_dissipation_rate | default("Second Order Upwind") }}
 {% endif %}
 
-; ── Report Definitions ───────────────────────────────────────────────
-/solve/report-definitions/add cd force force-vector 1 0 0 thread-names * () quit
-/solve/report-definitions/add cl force force-vector 0 0 1 thread-names * () quit
-/solve/report-definitions/add cm moment moment-vector 0 1 0 moment-center 0 0 0 thread-names * () quit
-
-/solve/report-files/add forces-report report-defs cd cl cm () file-name "{{ workspace }}/forces.csv" print? yes quit
-/solve/report-files/add residuals-report report-type iteration file-name "{{ workspace }}/residuals.csv" print? yes quit
-
-; ── Convergence Monitors ─────────────────────────────────────────────
-{% set rt = solver.convergence.residual_target | default(1e-4) %}
-/solve/monitors/residual/convergence-criteria {{ rt }} {{ rt }} {{ rt }} {{ rt }} {{ rt }} {{ rt }}
+; ── Report definitions, report files, convergence (shared partial) ───
+{% include '_reports_block.jou.j2' %}
 
 ; ── Initialize ───────────────────────────────────────────────────────
 {% if solver.initialization | default("hybrid") == "hybrid-absolute" %}
@@ -66,54 +57,8 @@
 {% endif %}
 
 ; ══════════════════════════════════════════════════════════════════════
-; Post-processing — contour images
+; PHASE 4: POST-PROCESSING — Contour Images (shared partial)
 ; ══════════════════════════════════════════════════════════════════════
-/display/set/picture/driver png
-/display/set/picture/x-resolution 1920
-/display/set/picture/y-resolution 1080
-/display/set/picture/use-window-resolution no
-/display/set/picture/color-mode color
-
-(%py-exec "solver.results.surfaces.iso_surface['midplane-z'] = {'field': 'z-coordinate', 'iso_values': [0.0]}")
-
-; Use the first inlet/outlet/ground we find as the contour surfaces, falling
-; back to whatever zones exist if those aren't present (wing-only, etc.).
-{% set bc = solver.boundary_conditions %}
-{% set inlet_zone = (bc.velocity_inlets[0].zone_name if bc.velocity_inlets else 'inlet') %}
-{% set outlet_zone = (bc.pressure_outlets[0].zone_name if bc.pressure_outlets else 'outlet') %}
-{% set ground_zone = (bc.translating_walls[0].zone_name if bc.translating_walls else 'ground') %}
-
-/display/set/contours/filled? yes
-/display/set/contours/node-values? yes
-/display/set/contours/surfaces {{ inlet_zone }} {{ outlet_zone }} {{ ground_zone }} ()
-/display/contour velocity velocity-magnitude
-/display/save-picture "{{ workspace }}/contour_velocity.png"
-
-/display/set/contours/surfaces midplane-z ()
-/display/contour velocity velocity-magnitude
-/display/save-picture "{{ workspace }}/contour_velocity_midplane.png"
-
-/display/set/contours/surfaces {{ inlet_zone }} {{ outlet_zone }} {{ ground_zone }} ()
-/display/contour pressure static-pressure
-/display/save-picture "{{ workspace }}/contour_pressure.png"
-
-/display/set/contours/surfaces midplane-z ()
-/display/contour pressure static-pressure
-/display/save-picture "{{ workspace }}/contour_pressure_midplane.png"
-
-/display/set/contours/surfaces {{ inlet_zone }} {{ outlet_zone }} {{ ground_zone }} ()
-/display/contour pressure total-pressure
-/display/save-picture "{{ workspace }}/contour_total_pressure.png"
-
-/display/set/contours/surfaces * ()
-/display/contour pressure pressure-coefficient
-/display/save-picture "{{ workspace }}/contour_cp.png"
-
-/display/contour wall-fluxes wall-shear-stress
-/display/save-picture "{{ workspace }}/contour_wall_shear.png"
-
-/display/set/contours/surfaces midplane-z ()
-/display/contour turb-kinetic-energy k
-/display/save-picture "{{ workspace }}/contour_tke_midplane.png"
+{% include '_contours_block.jou.j2' %}
 
 /exit yes

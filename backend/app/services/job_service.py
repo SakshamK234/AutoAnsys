@@ -123,6 +123,12 @@ class JobService:
         # Apply per-mode SOP defaults — fills BCs / iter count / ref area if
         # the wizard didn't already (e.g. API-direct callers, sweep clones).
         solver_with_defaults = apply_cfd_mode_defaults(data.cfd_mode, data.solver_config)
+
+        # Surface correctness issues (symmetry factor, missing ground/wheels,
+        # unset reference values) as warnings rather than silently shipping them.
+        from app.schemas.job import check_solver_correctness
+        for warning in check_solver_correctness(solver_with_defaults, data.cfd_mode):
+            logger.warning("Job config (%s): %s", data.cfd_mode, warning)
         config = {
             "cfd_mode": data.cfd_mode,
             "mesh": data.mesh_config.model_dump(),
@@ -363,7 +369,8 @@ class JobService:
         if rf is None:
             return []
 
-        return self._parse_forces_csv(rf.s3_key)
+        solver_config = (job.config or {}).get("solver", {})
+        return self._parse_forces_csv(rf.s3_key, solver_config)
 
     async def get_residual_data(self, user: User, job_id: uuid.UUID) -> list[dict]:
         """Retrieve residual convergence data from completed job results."""
@@ -384,12 +391,30 @@ class JobService:
 
         return self._parse_residuals_csv(rf.s3_key)
 
-    def _parse_forces_csv(self, s3_key: str) -> list[dict]:
-        """Download forces CSV from S3 and parse into ForceReport dicts."""
+    def _parse_forces_csv(self, s3_key: str, solver_config: dict | None = None) -> list[dict]:
+        """Download forces CSV from S3 and parse into ForceReport dicts.
+
+        Two formats are supported:
+          * **M2+** — body-scoped FORCE columns (drag_force/lift_force/mom_y).
+            These are run through ``app.post.forces`` to apply the half-model
+            symmetry factor and derive Cd/Cl/Cm from the reference values.
+          * **legacy** — old cd/cl/cm columns (forces over all walls, mislabelled).
+            Passed through unchanged so historical jobs still display.
+        """
+        from app.post.forces import process_force_rows, reference_kwargs_from_solver
+
         s3 = _get_s3_client()
         obj = s3.get_object(Bucket=settings.S3_BUCKET, Key=s3_key)
         body = obj["Body"].read().decode("utf-8")
         reader = csv.DictReader(io.StringIO(body))
+        fieldnames = set(reader.fieldnames or [])
+
+        if "drag_force" in fieldnames:
+            raw_rows = list(reader)
+            kwargs = reference_kwargs_from_solver(solver_config or {})
+            return process_force_rows(raw_rows, **kwargs)
+
+        # Legacy passthrough (pre-M2 forces.csv with cd/cl/cm columns).
         rows = []
         for row in reader:
             try:

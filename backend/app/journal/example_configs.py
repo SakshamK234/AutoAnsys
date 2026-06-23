@@ -12,10 +12,11 @@ can be rendered and inspected with **no** pydantic / DB / cluster dependency
 anywhere. ``tests/test_config_matches_schema`` cross-checks these against the real
 schema whenever the full stack is importable, so they cannot silently drift.
 
-They intentionally capture the *current* (pre-M2) behaviour, including the known
-defects documented in AUDIT.md (e.g. full_car has no symmetry plane / no outlet,
-reference area 0.65). Later milestones will change both the schema and these
-fixtures together, and the golden-file diffs make those changes reviewable.
+They track the schema as it evolves. As of M2 they include the correctness fixes
+(reference density, half-car symmetry plane + force factor, body-scoped force
+reports). Remaining known gaps stay visible (e.g. full_car still has no pressure
+outlet pending F4, reference area 0.65 pending F1). Schema + fixtures change
+together, and the golden-file diffs make each change reviewable.
 """
 
 from __future__ import annotations
@@ -76,6 +77,19 @@ _DATA_EXPORT: dict = {
     "surface_data": ["pressure", "wall-shear"],
 }
 
+# Both SOP profiles run a half-domain with a centreline symmetry plane, so forces
+# are doubled in post (AUDIT C1).
+_SYMMETRY: dict = {"half_model": True, "force_factor": 2.0}
+
+_REPORTING: dict = {
+    "body_wall_pattern": "wall-body*",
+    "emit_forces_newtons": True,
+    "emit_coefficients": True,
+    "moment_center_x": 0.0,
+    "moment_center_y": 0.0,
+    "moment_center_z": 0.0,
+}
+
 _SLURM: dict = {
     "nodes": 1,
     "cores_per_node": 128,
@@ -132,9 +146,14 @@ _INDIVIDUAL_PART_SOLVER: dict = {
         "max_iterations": 300,
         "force_monitor_window": 100,
         "force_monitor_tolerance": 0.001,
+        "use_force_convergence": True,
     },
     "data_export": copy.deepcopy(_DATA_EXPORT),
-    "reference_values": {"area_m2": 1.2, "length_m": 2.8, "velocity_mps": 15.65},
+    "reference_values": {
+        "area_m2": 1.2, "length_m": 2.8, "velocity_mps": 15.65, "density_kg_m3": 1.225,
+    },
+    "symmetry": copy.deepcopy(_SYMMETRY),
+    "reporting": copy.deepcopy(_REPORTING),
     "initialization": "hybrid",
 }
 
@@ -174,7 +193,8 @@ _FULL_CAR_SOLVER: dict = {
             {"zone_name": "contact-patches"},
         ],
         "stationary_walls": [],
-        "symmetry_planes": [],
+        # Half-car centreline symmetry plane (AUDIT C9 — was missing pre-M2).
+        "symmetry_planes": [{"zone_name": "symmetry"}],
     },
     "solution_methods": copy.deepcopy(_SOLUTION_METHODS),
     "convergence": {
@@ -182,9 +202,14 @@ _FULL_CAR_SOLVER: dict = {
         "max_iterations": 750,
         "force_monitor_window": 100,
         "force_monitor_tolerance": 0.001,
+        "use_force_convergence": True,
     },
     "data_export": copy.deepcopy(_DATA_EXPORT),
-    "reference_values": {"area_m2": 0.65, "length_m": 2.8, "velocity_mps": 15.65},
+    "reference_values": {
+        "area_m2": 0.65, "length_m": 2.8, "velocity_mps": 15.65, "density_kg_m3": 1.225,
+    },
+    "symmetry": copy.deepcopy(_SYMMETRY),
+    "reporting": copy.deepcopy(_REPORTING),
     "initialization": "hybrid",
 }
 

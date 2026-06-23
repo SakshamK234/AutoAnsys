@@ -1,0 +1,58 @@
+; ════════════════════════════════════════════════════════════════════════
+; SHARED CONTOUR / POST-PROCESSING BLOCK
+; Included by solver_from_case.jou.j2 and mesh_watertight.jou.j2.
+;
+; The contour-surface zone names are derived here from the configured BCs, so
+; both journals always have them defined. The combined journal previously
+; referenced undefined {{ inlet_zone }} / {{ outlet_zone }} / {{ ground_zone }}
+; and rendered empty `surfaces  ()` selections (AUDIT C7).
+; ════════════════════════════════════════════════════════════════════════
+
+{% set bc = solver.boundary_conditions %}
+{% set inlet_zone = (bc.velocity_inlets[0].zone_name if bc.velocity_inlets else 'inlet') %}
+{% set outlet_zone = (bc.pressure_outlets[0].zone_name if bc.pressure_outlets else 'outlet') %}
+{% set ground_zone = (bc.translating_walls[0].zone_name if bc.translating_walls else 'ground') %}
+
+; ── Picture driver setup (offscreen PNG for batch mode) ───────────────
+/display/set/picture/driver png
+/display/set/picture/x-resolution 1920
+/display/set/picture/y-resolution 1080
+/display/set/picture/use-window-resolution no
+/display/set/picture/color-mode color
+
+; ── Mid-plane cross-section (Z=0) for flow-field views ────────────────
+(%py-exec "solver.results.surfaces.iso_surface['midplane-z'] = {'field': 'z-coordinate', 'iso_values': [0.0]}")
+
+/display/set/contours/filled? yes
+/display/set/contours/node-values? yes
+
+/display/set/contours/surfaces {{ inlet_zone }} {{ outlet_zone }} {{ ground_zone }} ()
+/display/contour velocity velocity-magnitude
+/display/save-picture "{{ workspace }}/contour_velocity.png"
+
+/display/set/contours/surfaces midplane-z ()
+/display/contour velocity velocity-magnitude
+/display/save-picture "{{ workspace }}/contour_velocity_midplane.png"
+
+/display/set/contours/surfaces {{ inlet_zone }} {{ outlet_zone }} {{ ground_zone }} ()
+/display/contour pressure static-pressure
+/display/save-picture "{{ workspace }}/contour_pressure.png"
+
+/display/set/contours/surfaces midplane-z ()
+/display/contour pressure static-pressure
+/display/save-picture "{{ workspace }}/contour_pressure_midplane.png"
+
+/display/set/contours/surfaces {{ inlet_zone }} {{ outlet_zone }} {{ ground_zone }} ()
+/display/contour pressure total-pressure
+/display/save-picture "{{ workspace }}/contour_total_pressure.png"
+
+/display/set/contours/surfaces * ()
+/display/contour pressure pressure-coefficient
+/display/save-picture "{{ workspace }}/contour_cp.png"
+
+/display/contour wall-fluxes wall-shear-stress
+/display/save-picture "{{ workspace }}/contour_wall_shear.png"
+
+/display/set/contours/surfaces midplane-z ()
+/display/contour turb-kinetic-energy k
+/display/save-picture "{{ workspace }}/contour_tke_midplane.png"

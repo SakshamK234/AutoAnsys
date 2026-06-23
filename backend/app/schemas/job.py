@@ -229,13 +229,23 @@ class SolutionMethods(BaseModel):
 class ReferenceValues(BaseModel):
     """Physics reference values used by the solver.
 
-    Defaults from Kevin Full Car reference:
-      area 1.2 m², length 2.8 m, velocity 15.65 m/s.
+    These feed Fluent's ``/report/reference-values`` and are what make force
+    *coefficients* (Cd/Cl/Cm) physical. ``density_kg_m3`` was previously never
+    set (AUDIT C4), so coefficients silently used Fluent's default density.
+
+    For a HALF model (symmetry plane on the centreline), ``area_m2`` is the
+    **full** frontal area and the resulting half-model forces/coefficients are
+    doubled in post-processing via ``SymmetryConfig.force_factor`` — see
+    AUDIT C1/C9 and SymmetryConfig below.
+
+    Defaults from the Kevin Full Car reference: length 2.8 m, velocity 15.65 m/s.
     """
 
     area_m2: float = 1.2
     length_m: float = 2.8
     velocity_mps: float = 15.65
+    # Sea-level air. [needs-cluster] confirm the operating density used on ARC.
+    density_kg_m3: float = 1.225
 
 
 class ConvergenceConfig(BaseModel):
@@ -243,8 +253,48 @@ class ConvergenceConfig(BaseModel):
     # SOP individual part = 300 iters; full-car specialist script = 750.
     # apply_cfd_mode_defaults() bumps this per mode.
     max_iterations: int = 300
+    # Force-coefficient plateau convergence (AUDIT C5): stop once cd/cl change by
+    # less than `force_monitor_tolerance` over `force_monitor_window` iterations.
+    # These were defined but never emitted before; M2 wires them into the journal.
     force_monitor_window: int = 100
     force_monitor_tolerance: float = 0.001
+    use_force_convergence: bool = True
+
+
+class SymmetryConfig(BaseModel):
+    """Half-model symmetry handling (AUDIT C1/C9 — the classic silent bug).
+
+    When a centreline symmetry plane halves the body, Fluent integrates forces
+    over the half model only. With ``reference_values.area_m2`` set to the FULL
+    frontal area, both the half-model force (N) and the half-model coefficient
+    come out at half the true value, so post-processing multiplies every
+    reported force/coefficient by ``force_factor`` (2.0 for a half model).
+
+    The factor is applied in post-processing, not the journal, because Fluent
+    cannot scale a report definition. ``apply_cfd_mode_defaults`` keeps it
+    consistent with whether a symmetry plane is present (see correctness guard).
+    """
+
+    half_model: bool = False
+    force_factor: float = 1.0
+
+
+class ReportingConfig(BaseModel):
+    """Force/moment report scope and outputs (AUDIT C2/C3).
+
+    ``body_wall_pattern`` scopes force integration to the body wall zone(s)
+    instead of the previous ``*`` (which wrongly included the ground and tunnel
+    walls). Both force (N) and coefficient (Cd/Cl/Cm) reports are emitted so the
+    team gets dimensional downforce/drag AND normalised coefficients.
+    """
+
+    # [needs-cluster F3] confirm the actual body wall zone name/pattern on ARC.
+    body_wall_pattern: str = "wall-body*"
+    emit_forces_newtons: bool = True
+    emit_coefficients: bool = True
+    moment_center_x: float = 0.0
+    moment_center_y: float = 0.0
+    moment_center_z: float = 0.0
 
 
 class DataExportConfig(BaseModel):
@@ -262,6 +312,8 @@ class SolverConfig(BaseModel):
     convergence: ConvergenceConfig = Field(default_factory=ConvergenceConfig)
     data_export: DataExportConfig = Field(default_factory=DataExportConfig)
     reference_values: ReferenceValues = Field(default_factory=ReferenceValues)
+    symmetry: SymmetryConfig = Field(default_factory=SymmetryConfig)
+    reporting: ReportingConfig = Field(default_factory=ReportingConfig)
     # "hybrid" → /solve/init/hyb-init (one-step; matches specialist script)
     # "hybrid-absolute" → set absolute reference frame, then hyb-initialize
     initialization: str = "hybrid"
@@ -315,7 +367,64 @@ def apply_cfd_mode_defaults(mode: str, sc: "SolverConfig") -> "SolverConfig":
         if target_iters is not None and sc.convergence.max_iterations == 750:
             sc.convergence.max_iterations = target_iters
 
+    # Half-model symmetry factor (AUDIT C1). Seed from the profile only while the
+    # config is still at the schema default (half_model=False, force_factor=1.0),
+    # so a user who set it explicitly is never clobbered.
+    sym = profile.get("symmetry")
+    if sym and not sc.symmetry.half_model and sc.symmetry.force_factor == 1.0:
+        sc.symmetry.half_model = bool(sym.get("half_model", False))
+        sc.symmetry.force_factor = float(sym.get("force_factor", 1.0))
+
     return sc
+
+
+# ── Correctness guards (AUDIT C1/C3/C4/C9) ───────────────────────────────────
+
+
+def check_solver_correctness(sc: "SolverConfig", cfd_mode: str) -> list[str]:
+    """Return a list of human-readable correctness warnings for a solver config.
+
+    Catches the classic silent mistakes: reference values unset, a symmetry plane
+    present without the doubling factor (or vice-versa), full-car missing its
+    moving ground / rotating wheels, and a bare component carrying wheel BCs.
+    Returns an empty list when everything is consistent. Used by journal
+    generation (logged) and by tests.
+    """
+    warnings: list[str] = []
+    bc = sc.boundary_conditions
+    rv = sc.reference_values
+
+    if rv.area_m2 <= 0:
+        warnings.append("reference area is <= 0; coefficients will be non-physical")
+    if rv.velocity_mps <= 0:
+        warnings.append("reference velocity is <= 0")
+    if rv.density_kg_m3 <= 0:
+        warnings.append("reference density is <= 0")
+
+    has_symmetry = bool(bc.symmetry_planes)
+    if has_symmetry and sc.symmetry.force_factor == 1.0:
+        warnings.append(
+            "a symmetry plane is present but symmetry.force_factor is 1.0 — "
+            "half-model forces will be under-reported by ~2x (AUDIT C1)"
+        )
+    if sc.symmetry.force_factor != 1.0 and not has_symmetry:
+        warnings.append(
+            f"symmetry.force_factor is {sc.symmetry.force_factor} but no symmetry "
+            "plane is defined — forces may be over-reported"
+        )
+
+    if cfd_mode == "full_car":
+        if not bc.translating_walls:
+            warnings.append("full_car has no moving-ground (translating) wall BC")
+        if not bc.rotating_walls:
+            warnings.append("full_car has no rotating-wheel BCs")
+    elif cfd_mode == "individual_part":
+        if bc.rotating_walls:
+            warnings.append(
+                "individual_part carries rotating-wheel BCs — unexpected for a bare component"
+            )
+
+    return warnings
 
 
 # ── SLURM Configuration ──────────────────────────────────────────────────
@@ -388,9 +497,15 @@ class JobListResponse(BaseModel):
 
 class ForceReport(BaseModel):
     iteration: int
+    # Coefficients (derived in post from forces + reference values, M2).
     cd: float
     cl: float
     cm: float
+    # Symmetry-corrected forces in Newtons / N·m (0.0 for legacy jobs whose CSV
+    # predates the M2 honest-force columns).
+    drag_n: float = 0.0
+    lift_n: float = 0.0
+    moment_nm: float = 0.0
 
 
 class ResidualData(BaseModel):

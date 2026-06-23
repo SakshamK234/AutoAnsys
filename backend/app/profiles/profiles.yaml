@@ -22,6 +22,7 @@ defaults:
   reference_values:
     length_m: 2.8
     velocity_mps: 15.65
+    density_kg_m3: 1.225      # sea-level air; [needs-cluster] confirm ARC operating density
   turbulence:
     model: k-omega-sst
     curvature_correction: true
@@ -35,7 +36,11 @@ profiles:
       area_m2: 1.2            # overridden per-part by the user / F1
     convergence:
       max_iterations: 300     # CFD_SOP (Individual Part)
-    # [M2] symmetry: { plane: optional, force_factor: 1.0 }
+    # SOP runs the component half-domain with a centreline symmetry plane, so the
+    # integrated forces are halved → double them in post (AUDIT C1).
+    symmetry:
+      half_model: true
+      force_factor: 2.0
     # [M5] mesh: { workflow: watertight, build_enclosure: true }
     # [M4] slurm: { nodes: 1, cores_per_node: 64, memory_gb: 120, walltime_hours: 6 }
     boundary_conditions:
@@ -62,10 +67,16 @@ profiles:
   full_car:
     description: Whole-car assembly, run half-car with a symmetry plane.
     reference_values:
-      area_m2: 0.65           # NOTE (AUDIT C9): looks half-car; full frontal TBD (F1)
+      # [needs-cluster F1] this should be the FULL frontal area (half-model forces
+      # are doubled below). 0.65 looks like a half-car value carried over from the
+      # specialist script — confirm and replace with the true full frontal area.
+      area_m2: 0.65
     convergence:
       max_iterations: 750     # Kevin Full Car / specialist script
-    # [M2] symmetry: { plane: required, force_factor: 2.0 }   # half-car doubling
+    # Half-car run with a centreline symmetry plane → double the forces (AUDIT C1).
+    symmetry:
+      half_model: true
+      force_factor: 2.0
     # [M5] mesh: { workflow: fault-tolerant, surface_wrap: true, half_domain: true }
     # [M4] slurm: { nodes: 2, cores_per_node: 128, memory_gb: 243, walltime_hours: 24 }
     boundary_conditions:
@@ -101,3 +112,7 @@ profiles:
       slip_walls:
         - zone_name: tunnel-walls
         - zone_name: contact-patches
+      # Half-car centreline symmetry plane (AUDIT C9 — was missing). Pairs with
+      # symmetry.force_factor: 2.0 above.
+      symmetry_planes:
+        - zone_name: symmetry

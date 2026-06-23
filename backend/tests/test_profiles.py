@@ -45,6 +45,8 @@ def test_individual_part_preset_values():
     assert bc["translating_walls"][0]["direction_x"] == -1.0
     assert bc["symmetry_planes"][0]["zone_name"] == "symmetry"
     assert bc["stationary_walls"][0]["zone_name"] == "walls"
+    # Component is run half-domain with a symmetry plane → doubling factor (C1).
+    assert p["symmetry"]["force_factor"] == 2.0
 
 
 def test_full_car_preset_values():
@@ -59,9 +61,13 @@ def test_full_car_preset_values():
     assert wheels["rear-tire"]["origin_x"] == -0.7056
     slip = {s["zone_name"] for s in bc["slip_walls"]}
     assert slip == {"tunnel-walls", "contact-patches"}
-    # Current (pre-M2) behaviour, per AUDIT C8/C9: no outlet, no symmetry plane.
+    # M2 fix (AUDIT C9): half-car run now carries a centreline symmetry plane,
+    # paired with the doubling factor below.
+    assert bc["symmetry_planes"][0]["zone_name"] == "symmetry"
+    assert p["symmetry"]["half_model"] is True
+    assert p["symmetry"]["force_factor"] == 2.0
+    # Still open (AUDIT C8 / F4): no pressure outlet in the specialist preset.
     assert bc.get("pressure_outlets") is None
-    assert bc.get("symmetry_planes") is None
 
 
 def test_resolve_returns_independent_copies():

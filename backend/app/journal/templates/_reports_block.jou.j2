@@ -1,0 +1,40 @@
+; ════════════════════════════════════════════════════════════════════════
+; SHARED REPORTS + CONVERGENCE BLOCK
+; Included by solver_from_case.jou.j2 and mesh_watertight.jou.j2 so the two
+; never diverge (a past divergence left the combined journal with undefined
+; contour-surface variables — AUDIT C7).
+;
+; Forces/moment are integrated over the BODY wall zone(s) only, via
+; reporting.body_wall_pattern — NOT the previous `thread-names *`, which also
+; summed the moving ground and tunnel walls (AUDIT C3). Outputs are FORCES in
+; Newtons (drag_force, lift_force, mom_y). The coefficients Cd/Cl/Cm and the
+; half-model symmetry doubling are computed downstream in app/post/forces.py
+; from these forces + the reference values, so the journal does not depend on
+; the version-specific coefficient-report TUI.
+; ════════════════════════════════════════════════════════════════════════
+
+{% set rep = solver.reporting | default({}) %}
+{% set body = rep.body_wall_pattern | default("wall-body*") %}
+{% set mcx = rep.moment_center_x | default(0.0) %}
+{% set mcy = rep.moment_center_y | default(0.0) %}
+{% set mcz = rep.moment_center_z | default(0.0) %}
+
+; ── Report Definitions (body-scoped forces; AUDIT C2/C3) ──────────────
+/solve/report-definitions/add drag_force force force-vector 1 0 0 thread-names {{ body }} () quit
+/solve/report-definitions/add lift_force force force-vector 0 0 1 thread-names {{ body }} () quit
+/solve/report-definitions/add mom_y moment moment-vector 0 1 0 moment-center {{ mcx }} {{ mcy }} {{ mcz }} thread-names {{ body }} () quit
+
+; ── Report Files ──────────────────────────────────────────────────────
+/solve/report-files/add forces-report report-defs drag_force lift_force mom_y () file-name "{{ workspace }}/forces.csv" print? yes quit
+/solve/report-files/add residuals-report report-type iteration file-name "{{ workspace }}/residuals.csv" print? yes quit
+
+; ── Convergence Monitors ──────────────────────────────────────────────
+{% set rt = solver.convergence.residual_target | default(1e-4) %}
+/solve/monitors/residual/convergence-criteria {{ rt }} {{ rt }} {{ rt }} {{ rt }} {{ rt }} {{ rt }}
+{% if solver.convergence.use_force_convergence | default(true) %}
+; Force-plateau convergence (AUDIT C5): stop early once the drag-force report
+; settles. The fixed `/solve/iterate N` below remains the hard upper bound, so if
+; this condition is mis-specified the run still terminates at N iterations.
+; [needs-cluster] verify the /solve/convergence-conditions TUI arg order on 2025R1.
+/solve/convergence-conditions/add drag-converged report-def drag_force stop-criterion {{ solver.convergence.force_monitor_tolerance | default(0.001) }} initial-values-to-ignore {{ (solver.convergence.max_iterations | default(300)) // 4 }} previous-values-to-consider {{ solver.convergence.force_monitor_window | default(100) }} print? yes () quit
+{% endif %}
