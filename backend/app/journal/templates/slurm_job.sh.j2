@@ -48,6 +48,15 @@ module load {{ fluent_module }}
 echo "Fluent binary: $(which fluent)"
 echo ""
 
+# Build the Fluent hostfile from the SLURM allocation so MULTI-NODE runs span
+# nodes (AUDIT S1 — previously the launch had no -cnf and silently stayed on one
+# node). `scontrol show hostnames` prints one hostname per node; Fluent spreads
+# the -t<N> ranks across them.
+HOSTFILE="{{ workspace }}/hostfile.txt"
+scontrol show hostnames "$SLURM_JOB_NODELIST" > "$HOSTFILE"
+echo "Hostfile ($(wc -l < "$HOSTFILE") node(s)):"
+cat "$HOSTFILE"
+
 # Single Fluent session. `-t${NCORES}` must match $SLURM_NTASKS — see the
 # SBATCH header above.
 #   start_mode=meshing → mesh-only or combined (Watertight + solver) journal
@@ -61,8 +70,19 @@ FLUENT_MODE_FLAG="-meshing"
 {% else %}
 FLUENT_MODE_FLAG=""
 {% endif %}
+
+# Parallel transport (F6: Intel MPI + InfiniBand on TinkerCliffs; config-driven).
+# interconnect: infiniband -> -pib, ethernet -> -peth, anything else -> omitted.
+{% set ic = (slurm.interconnect | default('infiniband')) | lower %}
+{% set ic_flag = '-pib' if ic in ['infiniband', 'ib'] else ('-peth' if ic in ['ethernet', 'eth'] else '') %}
+MPI_FLAGS="-mpi={{ slurm.mpi | default('intel') }} {{ ic_flag }} -cnf=$HOSTFILE"
+
 echo "=== Fluent Start ($(date)) — start_mode={{ start_mode | default('meshing') }} ==="
-fluent 3ddp ${FLUENT_MODE_FLAG} -g -t${NCORES} -i autoansys.jou 2>&1 | tee fluent.log
+echo "Launch: fluent 3ddp ${FLUENT_MODE_FLAG} -g -t${NCORES} ${MPI_FLAGS} -i autoansys.jou"
+# License is provided by `module load {{ fluent_module }}` (F6). Override here only
+# if your site needs explicit servers, e.g.:
+#   export ANSYSLMD_LICENSE_FILE=<port@host>
+fluent 3ddp ${FLUENT_MODE_FLAG} -g -t${NCORES} ${MPI_FLAGS} -i autoansys.jou 2>&1 | tee fluent.log
 FLUENT_EXIT=${PIPESTATUS[0]}
 echo "Fluent exit code: $FLUENT_EXIT"
 if [ $FLUENT_EXIT -ne 0 ]; then

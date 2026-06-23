@@ -223,8 +223,10 @@ class MeshService:
 
             status_info = slurm_mgr.get_job_status(mesh.slurm_job_id)
             raw_state = status_info.get("state", "UNKNOWN").strip()
+            # sacct emits "CANCELLED by <uid>" — keep only the verb (AUDIT S6).
+            slurm_state = raw_state.split()[0] if raw_state else raw_state
             # Reuse the Job SLURM state map (same enum values).
-            job_state = _SLURM_STATE_MAP.get(raw_state)
+            job_state = _SLURM_STATE_MAP.get(slurm_state)
             if job_state is None:
                 return None
             return MeshStatus(job_state.value)

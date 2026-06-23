@@ -41,8 +41,13 @@ profiles:
     symmetry:
       half_model: true
       force_factor: 2.0
+    # Component: a single exclusive node, shorter walltime (vs full car's 2 nodes).
+    slurm:
+      nodes: 1
+      cores_per_node: 128
+      memory_gb: 243
+      walltime_hours: 6
     # [M5] mesh: { workflow: watertight, build_enclosure: true }
-    # [M4] slurm: { nodes: 1, cores_per_node: 64, memory_gb: 120, walltime_hours: 6 }
     boundary_conditions:
       velocity_inlets:
         - zone_name: inlet
@@ -77,8 +82,14 @@ profiles:
     symmetry:
       half_model: true
       force_factor: 2.0
+    # Full car: more cells → multiple exclusive nodes (needs the multi-node Fluent
+    # launch, AUDIT S1) and a longer walltime.
+    slurm:
+      nodes: 2
+      cores_per_node: 128
+      memory_gb: 243
+      walltime_hours: 24
     # [M5] mesh: { workflow: fault-tolerant, surface_wrap: true, half_domain: true }
-    # [M4] slurm: { nodes: 2, cores_per_node: 128, memory_gb: 243, walltime_hours: 24 }
     boundary_conditions:
       velocity_inlets:
         - zone_name: inlet

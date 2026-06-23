@@ -18,7 +18,12 @@ import pytest
 pytest.importorskip("pydantic", reason="schema layer needs pydantic")
 
 from app.journal.example_configs import PROFILES, example_config  # noqa: E402
-from app.schemas.job import SolverConfig, apply_cfd_mode_defaults  # noqa: E402
+from app.schemas.job import (  # noqa: E402
+    SlurmConfig,
+    SolverConfig,
+    apply_cfd_mode_defaults,
+    apply_cfd_mode_slurm_defaults,
+)
 
 
 @pytest.mark.parametrize("mode", PROFILES)
@@ -28,6 +33,14 @@ def test_apply_defaults_matches_example_solver(mode: str):
         f"apply_cfd_mode_defaults({mode!r}) drifted from example_configs. If the "
         f"profile preset changed intentionally, update example_configs.py and "
         f"regenerate goldens (UPDATE_GOLDEN=1)."
+    )
+
+
+@pytest.mark.parametrize("mode", PROFILES)
+def test_apply_slurm_defaults_matches_example_slurm(mode: str):
+    resolved = apply_cfd_mode_slurm_defaults(mode, SlurmConfig())
+    assert resolved.model_dump() == example_config(mode)["slurm"], (
+        f"apply_cfd_mode_slurm_defaults({mode!r}) drifted from example_configs."
     )
 
 

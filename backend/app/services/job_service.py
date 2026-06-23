@@ -14,7 +14,11 @@ from app.models.geometry import Geometry
 from app.models.group import Group, GroupMembership
 from app.models.job import Job, JobStatus
 from app.models.user import User
-from app.schemas.job import JobCreate, apply_cfd_mode_defaults
+from app.schemas.job import (
+    JobCreate,
+    apply_cfd_mode_defaults,
+    apply_cfd_mode_slurm_defaults,
+)
 from app.utils.sanitize import sanitize_for_shell, sanitize_path
 
 logger = logging.getLogger(__name__)
@@ -121,6 +125,7 @@ class JobService:
         # Apply per-mode SOP defaults — fills BCs / iter count / ref area if
         # the wizard didn't already (e.g. API-direct callers, sweep clones).
         solver_with_defaults = apply_cfd_mode_defaults(data.cfd_mode, data.solver_config)
+        slurm_with_defaults = apply_cfd_mode_slurm_defaults(data.cfd_mode, data.slurm_config)
 
         # Surface correctness issues (symmetry factor, missing ground/wheels,
         # unset reference values) as warnings rather than silently shipping them.
@@ -131,7 +136,7 @@ class JobService:
             "cfd_mode": data.cfd_mode,
             "mesh": data.mesh_config.model_dump(),
             "solver": solver_with_defaults.model_dump(),
-            "slurm": data.slurm_config.model_dump(),
+            "slurm": slurm_with_defaults.model_dump(),
         }
 
         job = Job(
@@ -246,7 +251,9 @@ class JobService:
 
             status_info = slurm_mgr.get_job_status(job.slurm_job_id)
             raw_state = status_info.get("state", "UNKNOWN").strip()
-            return _SLURM_STATE_MAP.get(raw_state)
+            # sacct emits "CANCELLED by <uid>" — keep only the verb (AUDIT S6).
+            slurm_state = raw_state.split()[0] if raw_state else raw_state
+            return _SLURM_STATE_MAP.get(slurm_state)
         except Exception:
             logger.exception("Failed to sync batch job %s", job.id)
             return None

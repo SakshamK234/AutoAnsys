@@ -70,6 +70,13 @@ def test_full_car_preset_values():
     assert bc.get("pressure_outlets") is None
 
 
+def test_per_profile_slurm_presets():
+    comp = resolve_profile("individual_part")["slurm"]
+    full = resolve_profile("full_car")["slurm"]
+    assert comp["nodes"] == 1 and comp["walltime_hours"] == 6
+    assert full["nodes"] == 2 and full["walltime_hours"] == 24
+
+
 def test_resolve_returns_independent_copies():
     # Mutating one resolution must not leak into the cached raw data.
     a = resolve_profile("full_car")

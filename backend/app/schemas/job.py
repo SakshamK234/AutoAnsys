@@ -438,6 +438,41 @@ class SlurmConfig(BaseModel):
     partition: str = "normal_q"
     account: str = "your_slurm_account"
     job_name: str = "autoansys_cfd"
+    # Fluent parallel transport (AUDIT S1; F6: Intel MPI + InfiniBand on
+    # TinkerCliffs). interconnect maps to the Fluent flag: infiniband -> -pib,
+    # ethernet -> -peth, none -> (omitted).
+    mpi: str = "intel"
+    interconnect: str = "infiniband"
+
+
+def apply_cfd_mode_slurm_defaults(mode: str, sc: "SlurmConfig") -> "SlurmConfig":
+    """Seed per-profile SLURM resources (nodes / cores / mem / walltime).
+
+    Applied only when ALL four resource fields are still at their schema default,
+    i.e. the caller did not size resources themselves (API-direct / sweep clones).
+    Account / partition / MPI are left untouched. Unknown modes are a no-op.
+    """
+    try:
+        profile = resolve_profile(mode)
+    except UnknownProfileError:
+        return sc
+    preset = profile.get("slurm")
+    if not preset:
+        return sc
+
+    default = SlurmConfig()
+    untouched = (
+        sc.nodes == default.nodes
+        and sc.cores_per_node == default.cores_per_node
+        and sc.memory_gb == default.memory_gb
+        and sc.walltime_hours == default.walltime_hours
+    )
+    if untouched:
+        sc.nodes = preset.get("nodes", sc.nodes)
+        sc.cores_per_node = preset.get("cores_per_node", sc.cores_per_node)
+        sc.memory_gb = preset.get("memory_gb", sc.memory_gb)
+        sc.walltime_hours = preset.get("walltime_hours", sc.walltime_hours)
+    return sc
 
 
 # ── Top-level Job Schemas ────────────────────────────────────────────────

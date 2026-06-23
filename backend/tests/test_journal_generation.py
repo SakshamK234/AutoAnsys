@@ -177,3 +177,26 @@ def test_full_car_has_symmetry_plane():
     # AUDIT C9: the half-car run must define a symmetry plane.
     content = render_profile_artifacts("full_car")["solver_from_case.jou"]
     assert "/define/boundary-conditions/zone-type symmetry symmetry" in content
+
+
+# ── M4 SLURM multi-node + per-profile sizing (AUDIT S1) ───────────────────
+
+
+@pytest.mark.parametrize("profile", PROFILES)
+@pytest.mark.parametrize("script", SLURM_FILES)
+def test_multinode_launch_flags(profile: str, script: str):
+    # AUDIT S1: the launch must build a hostfile and pass MPI + interconnect +
+    # -cnf, otherwise multi-node jobs silently run on a single node.
+    sh = render_profile_artifacts(profile)[script]
+    assert 'scontrol show hostnames "$SLURM_JOB_NODELIST"' in sh
+    assert "-mpi=intel" in sh
+    assert "-pib" in sh
+    assert "-cnf=$HOSTFILE" in sh
+    assert "${MPI_FLAGS}" in sh  # the fluent line actually uses the flags
+
+
+def test_per_profile_slurm_sizing():
+    comp = render_profile_artifacts("individual_part")["run_solver.sh"]
+    full = render_profile_artifacts("full_car")["run_solver.sh"]
+    assert "#SBATCH --nodes=1" in comp and "#SBATCH --time=06:00:00" in comp
+    assert "#SBATCH --nodes=2" in full and "#SBATCH --time=24:00:00" in full

@@ -90,7 +90,9 @@ _REPORTING: dict = {
     "moment_center_z": 0.0,
 }
 
-_SLURM: dict = {
+# Per-profile SLURM (mirrors apply_cfd_mode_slurm_defaults): component = 1 node /
+# 6 h, full car = 2 nodes / 24 h. Intel MPI + InfiniBand (F6).
+_SLURM_BASE: dict = {
     "nodes": 1,
     "cores_per_node": 128,
     "memory_gb": 243,
@@ -98,7 +100,20 @@ _SLURM: dict = {
     "partition": "normal_q",
     "account": "your_slurm_account",
     "job_name": "autoansys_cfd",
+    "mpi": "intel",
+    "interconnect": "infiniband",
 }
+
+_SLURM_OVERRIDES: dict = {
+    "individual_part": {"nodes": 1, "walltime_hours": 6},
+    "full_car": {"nodes": 2, "walltime_hours": 24},
+}
+
+
+def _slurm_for(cfd_mode: str) -> dict:
+    s = copy.deepcopy(_SLURM_BASE)
+    s.update(_SLURM_OVERRIDES.get(cfd_mode, {}))
+    return s
 
 
 def _inlet(zone: str = "inlet") -> dict:
@@ -229,7 +244,7 @@ def example_config(cfd_mode: str) -> dict:
         "cfd_mode": cfd_mode,
         "mesh": _MESH,
         "solver": solver,
-        "slurm": _SLURM,
+        "slurm": _slurm_for(cfd_mode),
     })
 
 

@@ -13,7 +13,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --exclusive
 #SBATCH --mem=243G
-#SBATCH --time=24:00:00
+#SBATCH --time=06:00:00
 #SBATCH --output=/scratch/<user>/autoansys/jobs/<individual_part_job>/slurm-%j.out
 #SBATCH --error=/scratch/<user>/autoansys/jobs/<individual_part_job>/slurm-%j.err
 
@@ -48,6 +48,15 @@ module load ANSYS/2025R1
 echo "Fluent binary: $(which fluent)"
 echo ""
 
+# Build the Fluent hostfile from the SLURM allocation so MULTI-NODE runs span
+# nodes (AUDIT S1 — previously the launch had no -cnf and silently stayed on one
+# node). `scontrol show hostnames` prints one hostname per node; Fluent spreads
+# the -t<N> ranks across them.
+HOSTFILE="/scratch/<user>/autoansys/jobs/<individual_part_job>/hostfile.txt"
+scontrol show hostnames "$SLURM_JOB_NODELIST" > "$HOSTFILE"
+echo "Hostfile ($(wc -l < "$HOSTFILE") node(s)):"
+cat "$HOSTFILE"
+
 # Single Fluent session. `-t${NCORES}` must match $SLURM_NTASKS — see the
 # SBATCH header above.
 #   start_mode=meshing → mesh-only or combined (Watertight + solver) journal
@@ -57,8 +66,17 @@ echo ""
 #                        Fluent stays in meshing mode and rejects
 #                        /define/boundary-conditions/... as "invalid command".
 FLUENT_MODE_FLAG=""
+
+# Parallel transport (F6: Intel MPI + InfiniBand on TinkerCliffs; config-driven).
+# interconnect: infiniband -> -pib, ethernet -> -peth, anything else -> omitted.
+MPI_FLAGS="-mpi=intel -pib -cnf=$HOSTFILE"
+
 echo "=== Fluent Start ($(date)) — start_mode=solver ==="
-fluent 3ddp ${FLUENT_MODE_FLAG} -g -t${NCORES} -i autoansys.jou 2>&1 | tee fluent.log
+echo "Launch: fluent 3ddp ${FLUENT_MODE_FLAG} -g -t${NCORES} ${MPI_FLAGS} -i autoansys.jou"
+# License is provided by `module load ANSYS/2025R1` (F6). Override here only
+# if your site needs explicit servers, e.g.:
+#   export ANSYSLMD_LICENSE_FILE=<port@host>
+fluent 3ddp ${FLUENT_MODE_FLAG} -g -t${NCORES} ${MPI_FLAGS} -i autoansys.jou 2>&1 | tee fluent.log
 FLUENT_EXIT=${PIPESTATUS[0]}
 echo "Fluent exit code: $FLUENT_EXIT"
 if [ $FLUENT_EXIT -ne 0 ]; then
