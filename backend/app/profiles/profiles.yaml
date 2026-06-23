@@ -1,0 +1,103 @@
+# ════════════════════════════════════════════════════════════════════════════
+# AutoAnsys run-profile presets — SINGLE SOURCE OF TRUTH
+# ════════════════════════════════════════════════════════════════════════════
+# A run profile (`individual_part` | `full_car`) selects domain/symmetry,
+# ground/wheel BCs, reference values, convergence, and (later milestones) mesh
+# workflow + SLURM sizing. `defaults` holds values shared by both profiles;
+# each profile overrides only what differs. The loader (app/profiles/__init__.py)
+# deep-merges defaults <- profile.
+#
+# Today this drives exactly what `apply_cfd_mode_defaults()` used to hardcode:
+# the boundary-condition presets, iteration count, and reference area. Values
+# here are byte-for-byte the previous Python literals, so behaviour is unchanged
+# (pinned by tests/test_config_matches_schema.py in the full env).
+#
+# Keys marked "[Mn]" are placeholders reserved for a later milestone and are NOT
+# wired into journal/SLURM generation yet — they document intended structure so
+# the schema doesn't churn when those milestones land.
+# ════════════════════════════════════════════════════════════════════════════
+
+defaults:
+  freestream_velocity_mps: 15.65
+  reference_values:
+    length_m: 2.8
+    velocity_mps: 15.65
+  turbulence:
+    model: k-omega-sst
+    curvature_correction: true
+
+profiles:
+
+  # ── Component: single part / sub-assembly ───────────────────────────────
+  individual_part:
+    description: Single part or sub-assembly (wing element, endplate, strake).
+    reference_values:
+      area_m2: 1.2            # overridden per-part by the user / F1
+    convergence:
+      max_iterations: 300     # CFD_SOP (Individual Part)
+    # [M2] symmetry: { plane: optional, force_factor: 1.0 }
+    # [M5] mesh: { workflow: watertight, build_enclosure: true }
+    # [M4] slurm: { nodes: 1, cores_per_node: 64, memory_gb: 120, walltime_hours: 6 }
+    boundary_conditions:
+      velocity_inlets:
+        - zone_name: inlet
+          velocity: 15.65
+          turbulent_intensity_pct: 5.0
+          turbulent_viscosity_ratio: 10.0
+      pressure_outlets:
+        - zone_name: outlet
+          gauge_pressure: 0.0
+      translating_walls:
+        - zone_name: ground
+          velocity_mps: 15.65
+          direction_x: -1.0
+          direction_y: 0.0
+          direction_z: 0.0
+      stationary_walls:
+        - zone_name: walls
+      symmetry_planes:
+        - zone_name: symmetry
+
+  # ── Full car: whole assembly (half-car + symmetry per maintainer) ───────
+  full_car:
+    description: Whole-car assembly, run half-car with a symmetry plane.
+    reference_values:
+      area_m2: 0.65           # NOTE (AUDIT C9): looks half-car; full frontal TBD (F1)
+    convergence:
+      max_iterations: 750     # Kevin Full Car / specialist script
+    # [M2] symmetry: { plane: required, force_factor: 2.0 }   # half-car doubling
+    # [M5] mesh: { workflow: fault-tolerant, surface_wrap: true, half_domain: true }
+    # [M4] slurm: { nodes: 2, cores_per_node: 128, memory_gb: 243, walltime_hours: 24 }
+    boundary_conditions:
+      velocity_inlets:
+        - zone_name: inlet
+          velocity: 15.65
+          turbulent_intensity_pct: 5.0
+          turbulent_viscosity_ratio: 10.0
+      # NOTE (AUDIT C8): no pressure_outlets in the specialist preset — confirm (F4).
+      translating_walls:
+        - zone_name: ground
+          velocity_mps: 15.65
+          direction_x: -1.0
+          direction_y: 0.0
+          direction_z: 0.0
+      rotating_walls:
+        - zone_name: front-tire
+          omega_rad_s: 77.0
+          origin_x: 0.8264
+          origin_y: 0.6125
+          origin_z: 0.1998
+          axis_x: 0.0
+          axis_y: 1.0
+          axis_z: 0.0
+        - zone_name: rear-tire
+          omega_rad_s: 77.0
+          origin_x: -0.7056
+          origin_y: 0.6125
+          origin_z: 0.1998
+          axis_x: 0.0
+          axis_y: 1.0
+          axis_z: 0.0
+      slip_walls:
+        - zone_name: tunnel-walls
+        - zone_name: contact-patches

@@ -5,6 +5,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.profiles import UnknownProfileError, resolve_profile
+
 
 # ── Mesh Configuration ────────────────────────────────────────────────────
 
@@ -271,89 +273,47 @@ class SolverConfig(BaseModel):
 def apply_cfd_mode_defaults(mode: str, sc: "SolverConfig") -> "SolverConfig":
     """Fill in BCs / iterations / reference values that the SOP fixes per mode.
 
-    Only fills BoundaryConditions if all BC lists are empty — once the user
-    has customised any BC list, we leave it alone. This lets the wizard call
-    this function on every mode-change as a "load preset" without clobbering
-    a user who has already tweaked things.
+    The preset *values* now come from ``app/profiles/profiles.yaml`` (the single
+    source of truth) via ``resolve_profile(mode)``; this function keeps only the
+    *application logic*, which is deliberately conservative:
 
-    full_car preset mirrors the specialist's working TUI script exactly:
-      inlet (15.65 m/s, 5%/10), front-tire & rear-tire @ 77 rad/s with the
-      Max-Squat origins, ground translating at -15.65 m/s in -x, tunnel-walls
-      and contact-patches as slip (specified-shear) walls.
-      Reference area 0.65 m², iterations 750.
+    - BoundaryConditions are filled **only if all BC lists are empty**, so the
+      wizard can call this on every mode-change as a "load preset" without
+      clobbering a user who has already customised a BC list.
+    - The reference area and iteration count are bumped only when they are still
+      at a recognised default, for the same non-clobbering reason. The exact
+      conditions mirror the previous hardcoded behaviour byte-for-byte.
 
-    individual_part preset is the FSAE Individual Part SOP:
-      inlet, outlet, ground (moving), walls (no-slip), symmetry plane.
-      Reference area 1.2 m², iterations 300.
+    Unknown modes leave the config untouched (forward-compatible).
     """
+    try:
+        profile = resolve_profile(mode)
+    except UnknownProfileError:
+        return sc
+
     bc = sc.boundary_conditions
     is_empty = not any([
         bc.velocity_inlets, bc.pressure_outlets, bc.translating_walls,
         bc.rotating_walls, bc.slip_walls, bc.stationary_walls, bc.symmetry_planes,
     ])
+    if is_empty and profile.get("boundary_conditions"):
+        # Pydantic coerces the nested dicts into the typed BC models.
+        sc.boundary_conditions = BoundaryConditions(**profile["boundary_conditions"])
+
+    target_area = profile.get("reference_values", {}).get("area_m2")
+    target_iters = profile.get("convergence", {}).get("max_iterations")
 
     if mode == "full_car":
-        if is_empty:
-            sc.boundary_conditions = BoundaryConditions(
-                velocity_inlets=[
-                    VelocityInletBC(
-                        zone_name="inlet",
-                        velocity=15.65,
-                        turbulent_intensity_pct=5.0,
-                        turbulent_viscosity_ratio=10.0,
-                    ),
-                ],
-                translating_walls=[
-                    TranslatingWallBC(
-                        zone_name="ground",
-                        velocity_mps=15.65,
-                        direction_x=-1.0,
-                    ),
-                ],
-                rotating_walls=[
-                    # Specialist's Max-Squat origins (m), axis +y, ω 77 rad/s.
-                    RotatingWallBC(
-                        zone_name="front-tire",
-                        omega_rad_s=77.0,
-                        origin_x=0.8264, origin_y=0.6125, origin_z=0.1998,
-                        axis_y=1.0,
-                    ),
-                    RotatingWallBC(
-                        zone_name="rear-tire",
-                        omega_rad_s=77.0,
-                        origin_x=-0.7056, origin_y=0.6125, origin_z=0.1998,
-                        axis_y=1.0,
-                    ),
-                ],
-                slip_walls=[
-                    SlipWallBC(zone_name="tunnel-walls"),
-                    SlipWallBC(zone_name="contact-patches"),
-                ],
-            )
-        # Reference area for the full car (specialist script: 0.65).
-        if sc.reference_values.area_m2 == 1.2:
-            sc.reference_values.area_m2 = 0.65
-        # Iteration count from the specialist's working journal.
-        if sc.convergence.max_iterations in (300, 3000):
-            sc.convergence.max_iterations = 750
-
+        # Override the default 1.2 m² with the full-car reference area.
+        if target_area is not None and sc.reference_values.area_m2 == 1.2:
+            sc.reference_values.area_m2 = target_area
+        # Bump from a component-style iteration count to the full-car value.
+        if target_iters is not None and sc.convergence.max_iterations in (300, 3000):
+            sc.convergence.max_iterations = target_iters
     elif mode == "individual_part":
-        if is_empty:
-            sc.boundary_conditions = BoundaryConditions(
-                velocity_inlets=[VelocityInletBC()],  # zone_name="inlet"
-                pressure_outlets=[PressureOutletBC()],  # zone_name="outlet"
-                translating_walls=[
-                    TranslatingWallBC(
-                        zone_name="ground",
-                        velocity_mps=15.65,
-                        direction_x=-1.0,
-                    ),
-                ],
-                stationary_walls=[StationaryWallBC(zone_name="walls")],
-                symmetry_planes=[SymmetryPlaneBC(zone_name="symmetry")],
-            )
-        if sc.convergence.max_iterations == 750:
-            sc.convergence.max_iterations = 300
+        # Drop a full-car iteration count back to the component default.
+        if target_iters is not None and sc.convergence.max_iterations == 750:
+            sc.convergence.max_iterations = target_iters
 
     return sc
 
