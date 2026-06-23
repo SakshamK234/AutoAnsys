@@ -1,7 +1,5 @@
 """Core business logic for CFD job lifecycle management."""
 
-import csv
-import io
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -392,63 +390,78 @@ class JobService:
         return self._parse_residuals_csv(rf.s3_key)
 
     def _parse_forces_csv(self, s3_key: str, solver_config: dict | None = None) -> list[dict]:
-        """Download forces CSV from S3 and parse into ForceReport dicts.
+        """Download the forces report from S3 and parse into ForceReport dicts.
 
-        Two formats are supported:
-          * **M2+** — body-scoped FORCE columns (drag_force/lift_force/mom_y).
-            These are run through ``app.post.forces`` to apply the half-model
-            symmetry factor and derive Cd/Cl/Cm from the reference values.
-          * **legacy** — old cd/cl/cm columns (forces over all walls, mislabelled).
-            Passed through unchanged so historical jobs still display.
+        Uses the tolerant Fluent report-file parser (AUDIT S7) so the real
+        whitespace-delimited output parses, not just the comma-delimited mock.
+        Two column formats are supported:
+          * **M2+** — body-scoped FORCE columns (drag_force/lift_force/mom_y),
+            run through ``app.post.forces`` to apply the half-model symmetry
+            factor and derive Cd/Cl/Cm from the reference values.
+          * **legacy** — old cd/cl/cm columns, passed through unchanged so
+            historical jobs still display.
         """
         from app.post.forces import process_force_rows, reference_kwargs_from_solver
+        from app.post.report_files import parse_report_file
 
         s3 = _get_s3_client()
         obj = s3.get_object(Bucket=settings.S3_BUCKET, Key=s3_key)
         body = obj["Body"].read().decode("utf-8")
-        reader = csv.DictReader(io.StringIO(body))
-        fieldnames = set(reader.fieldnames or [])
+        rows = parse_report_file(body)
+        if not rows:
+            return []
 
-        if "drag_force" in fieldnames:
-            raw_rows = list(reader)
+        if "drag_force" in rows[0]:
             kwargs = reference_kwargs_from_solver(solver_config or {})
-            return process_force_rows(raw_rows, **kwargs)
+            return process_force_rows(rows, **kwargs)
 
         # Legacy passthrough (pre-M2 forces.csv with cd/cl/cm columns).
-        rows = []
-        for row in reader:
-            try:
-                rows.append({
-                    "iteration": int(row.get("iteration", 0)),
-                    "cd": float(row.get("cd", 0)),
-                    "cl": float(row.get("cl", 0)),
-                    "cm": float(row.get("cm", 0)),
-                })
-            except (ValueError, KeyError):
+        out = []
+        for row in rows:
+            if "cd" not in row:
                 continue
-        return rows
+            out.append({
+                "iteration": int(row.get("iteration", 0)),
+                "cd": row.get("cd", 0.0),
+                "cl": row.get("cl", 0.0),
+                "cm": row.get("cm", 0.0),
+            })
+        return out
 
     def _parse_residuals_csv(self, s3_key: str) -> list[dict]:
-        """Download residuals CSV from S3 and parse into ResidualData dicts."""
+        """Download the residuals report from S3 and parse into ResidualData dicts.
+
+        Tolerant of Fluent's residual column names (e.g. ``x-velocity`` with a
+        hyphen) and the underscore form the mock writes. ``omega`` falls back to
+        ``epsilon`` for k-epsilon runs. [needs-cluster] the residual-capture
+        mechanism itself still needs validation against a real run (the journal's
+        report-file may need to be transcript-parsed instead).
+        """
+        from app.post.report_files import parse_report_file
+
         s3 = _get_s3_client()
         obj = s3.get_object(Bucket=settings.S3_BUCKET, Key=s3_key)
         body = obj["Body"].read().decode("utf-8")
-        reader = csv.DictReader(io.StringIO(body))
-        rows = []
-        for row in reader:
-            try:
-                rows.append({
-                    "iteration": int(row.get("iteration", 0)),
-                    "continuity": float(row.get("continuity", 0)),
-                    "x_velocity": float(row.get("x_velocity", 0)),
-                    "y_velocity": float(row.get("y_velocity", 0)),
-                    "z_velocity": float(row.get("z_velocity", 0)),
-                    "k": float(row.get("k", 0)),
-                    "omega": float(row.get("omega", 0)),
-                })
-            except (ValueError, KeyError):
-                continue
-        return rows
+        rows = parse_report_file(body)
+
+        def pick(row: dict, *names: str) -> float:
+            for n in names:
+                if n in row:
+                    return float(row[n])
+            return 0.0
+
+        out = []
+        for row in rows:
+            out.append({
+                "iteration": int(pick(row, "iteration", "iter")),
+                "continuity": pick(row, "continuity"),
+                "x_velocity": pick(row, "x_velocity", "x-velocity"),
+                "y_velocity": pick(row, "y_velocity", "y-velocity"),
+                "z_velocity": pick(row, "z_velocity", "z-velocity"),
+                "k": pick(row, "k"),
+                "omega": pick(row, "omega", "epsilon"),
+            })
+        return out
 
     # ── Helpers ───────────────────────────────────────────────────────────
 
