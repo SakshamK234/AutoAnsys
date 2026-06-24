@@ -73,4 +73,4 @@ so a user customisation is never overwritten.
 `app/post/*`, the profile loader, journal/SLURM generation (golden + invariants),
 sanitization, and run-metadata are **unit-tested and pass without Fluent**. The
 Fluent-Meshing journal internals (especially fault-tolerant) and the exact 2025R1
-TUI/report formats are **cluster-validation items** — see [VALIDATION.md](../VALIDATION.md).
+TUI/report formats are **cluster-validation items** — see [VALIDATION.md](VALIDATION.md).

@@ -11,7 +11,7 @@ docker compose up --build
 
 - **Frontend:** http://localhost:3000  
 - **API:** http://localhost:8000  
-- **Docs:** [GETTING_STARTED.md](./GETTING_STARTED.md), [docs/SUBMITTING_JOBS.md](./docs/SUBMITTING_JOBS.md)
+- **Docs:** [docs/](docs/) (start with [Getting Started](docs/GETTING_STARTED.md))
 
 By default, **`CLUSTER_MOCK_MODE=true`** so the stack runs without a real cluster (mock jobs complete for UI development). To submit to your site’s HPC, set `CLUSTER_MOCK_MODE=false` and configure cluster variables in `.env` (see below).
 
@@ -39,12 +39,12 @@ many **solves** (sweeps reuse the mesh).
 cd backend && python -m app.journal.validate --out ./_dryrun
 ```
 
-### Docs
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — stage diagram, module map, run-profile design
-- [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) — every config parameter + both profiles
-- [RUNBOOK.md](RUNBOOK.md) — submit / monitor / retrieve + troubleshooting
-- [VALIDATION.md](VALIDATION.md) — what must be validated on the real cluster
-- [AUDIT.md](AUDIT.md) · [PLAN.md](PLAN.md) · [CHANGES.md](CHANGES.md) — the audit, plan, and change summary
+### Docs ([full index](docs/README.md))
+- [Architecture](docs/ARCHITECTURE.md) — stage diagram, module map, run-profile design
+- [Config reference](docs/CONFIG_REFERENCE.md) — every config parameter + both profiles
+- [Runbook](docs/RUNBOOK.md) — submit / monitor / retrieve + troubleshooting
+- [Validation](docs/VALIDATION.md) — what must be validated on the real cluster
+- [Audit](docs/AUDIT.md) · [Plan](docs/PLAN.md) · [Changes](docs/CHANGES.md) — the audit, plan, and change summary
 
 ## Configuration (public / production)
 

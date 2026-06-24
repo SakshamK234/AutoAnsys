@@ -19,7 +19,7 @@ cd AutoAnsys
 cp .env.example .env
 ```
 
-Out of the box, **`CLUSTER_MOCK_MODE`** defaults to **`true`** in Docker Compose so you can use the UI without a real HPC login. Cluster-related values in `.env.example` are **placeholders** — replace them for your site. For real SSH submission from Docker, uncomment the SSH key volume lines in `docker-compose.yml` and set `CLUSTER_SSH_KEY_HOST_PATH` (see `.env.example`). The canonical copy of this guide is [GETTING_STARTED.md](../GETTING_STARTED.md) at the repository root.
+Out of the box, **`CLUSTER_MOCK_MODE`** defaults to **`true`** in Docker Compose so you can use the UI without a real HPC login. Cluster-related values in `.env.example` are **placeholders** (`your_netid`, `cluster-login.example.edu`, etc.) — replace them when you connect to your site’s cluster. For real SSH submission from Docker, uncomment the SSH key volume lines in `docker-compose.yml` and set `CLUSTER_SSH_KEY_HOST_PATH` (see `.env.example`).
 
 ### 2. Start everything
 
@@ -202,7 +202,9 @@ Base URL: `http://localhost:8000/api`
 ## Security (public or shared deployments)
 
 - **Never commit** `.env`, SSH private keys, or real cluster passwords.
-- **Change** `JWT_SECRET` and default database / MinIO credentials before exposing the stack beyond localhost.
+- **Change** `JWT_SECRET` and any default database / MinIO credentials before exposing the stack beyond localhost.
+- **Review** `git log` if this repo was ever private with real secrets; rotate any keys that may have been committed.
+- **ANSYS Fluent** requires your own license; this project does not distribute ANSYS software.
 
 ---
 
@@ -219,14 +221,15 @@ See `.env.example` for the full list. Key variables:
 | `S3_SECRET_KEY` | S3 secret key | `minioadmin` (dev only) |
 | `S3_BUCKET` | S3 bucket name | `autoansys` |
 | `JWT_SECRET` | Secret for signing JWTs | Set a long random string |
-| `CLUSTER_MOCK_MODE` | Skip real SSH | `true` |
+| `CLUSTER_MOCK_MODE` | Skip real SSH (`true` recommended for first run) | `true` |
 | `CLUSTER_HOST` | HPC login node hostname | `cluster-login.example.edu` |
 | `CLUSTER_USER` | SSH username for cluster | `your_netid` |
 | `CLUSTER_WORKSPACE_BASE` | Scratch path for job workspaces | `/scratch/your_netid/autoansys/jobs` |
-| `CLUSTER_ACCOUNT` | Default SLURM account | `your_slurm_account` |
-| `CLUSTER_KEY_PATH` | Path to SSH private key | `/root/.ssh/id_cluster` |
+| `CLUSTER_ACCOUNT` | Default SLURM account in API defaults | `your_slurm_account` |
+| `CLUSTER_KEY_PATH` | Path to SSH private key (in container or host) | `/root/.ssh/id_cluster` |
 
 ---
+
 
 ## Common Commands
 
