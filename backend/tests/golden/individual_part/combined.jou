@@ -67,7 +67,10 @@
 ; SOP: last-ratio offset method with Continuous local-prism preference.
 ; Setting OffsetMethodType='last-ratio' before AddChildAndUpdate makes the
 ; spawned child task be named 'last-ratio_1' (default would be 'smooth-transition_1').
-(%py-exec "workflow.TaskObject['Add Boundary Layers'].Arguments.set_state({'LocalPrismPreferences': {'Continuous': r'Continuous'}, 'OffsetMethodType': r'last-ratio'})")
+; NumberOfLayers driven from config (AUDIT C6 — volume_mesh.num_layers was ignored).
+; [needs-cluster] first_layer_height / y+ control needs the 'aspect-ratio'/'uniform'
+; offset method; wire volume_mesh.first_layer_height once the y+ target is confirmed.
+(%py-exec "workflow.TaskObject['Add Boundary Layers'].Arguments.set_state({'LocalPrismPreferences': {'Continuous': r'Continuous'}, 'OffsetMethodType': r'last-ratio', 'NumberOfLayers': 15})")
 (%py-exec "workflow.TaskObject['Add Boundary Layers'].AddChildAndUpdate(DeferUpdate=False)")
 (%py-exec "workflow.TaskObject['last-ratio_1'].Execute()")
 

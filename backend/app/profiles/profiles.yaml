@@ -47,7 +47,9 @@ profiles:
       cores_per_node: 128
       memory_gb: 243
       walltime_hours: 6
-    # [M5] mesh: { workflow: watertight, build_enclosure: true }
+    # Clean single part → Watertight workflow.
+    mesh:
+      workflow: watertight
     boundary_conditions:
       velocity_inlets:
         - zone_name: inlet
@@ -89,7 +91,9 @@ profiles:
       cores_per_node: 128
       memory_gb: 243
       walltime_hours: 24
-    # [M5] mesh: { workflow: fault-tolerant, surface_wrap: true, half_domain: true }
+    # Dirty multi-body assembly → Fault-tolerant (surface-wrapped) workflow.
+    mesh:
+      workflow: fault-tolerant
     boundary_conditions:
       velocity_inlets:
         - zone_name: inlet

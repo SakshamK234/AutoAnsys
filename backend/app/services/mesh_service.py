@@ -83,7 +83,16 @@ class MeshService:
                     detail="You are not a member of the selected group",
                 )
 
-        mesh_dict = data.mesh_config.model_dump()
+        # Resolve per-profile mesh/slurm defaults BEFORE hashing so reuse keys on
+        # the workflow the job will actually run (watertight vs fault-tolerant).
+        from app.schemas.job import (
+            apply_cfd_mode_mesh_defaults,
+            apply_cfd_mode_slurm_defaults,
+        )
+        mesh_with_defaults = apply_cfd_mode_mesh_defaults(data.cfd_mode, data.mesh_config)
+        slurm_with_defaults = apply_cfd_mode_slurm_defaults(data.cfd_mode, data.slurm_config)
+
+        mesh_dict = mesh_with_defaults.model_dump()
         config_hash = compute_mesh_config_hash(data.geometry_id, mesh_dict, data.cfd_mode)
 
         output_path = (data.output_path or "/home/<username>/").strip()
@@ -102,7 +111,7 @@ class MeshService:
         config = {
             "cfd_mode": data.cfd_mode,
             "mesh": mesh_dict,
-            "slurm": data.slurm_config.model_dump(),
+            "slurm": slurm_with_defaults.model_dump(),
             "output_path": output_path,
         }
 

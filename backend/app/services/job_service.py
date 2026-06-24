@@ -17,6 +17,7 @@ from app.models.user import User
 from app.schemas.job import (
     JobCreate,
     apply_cfd_mode_defaults,
+    apply_cfd_mode_mesh_defaults,
     apply_cfd_mode_slurm_defaults,
 )
 from app.utils.sanitize import sanitize_for_shell, sanitize_path
@@ -126,6 +127,7 @@ class JobService:
         # the wizard didn't already (e.g. API-direct callers, sweep clones).
         solver_with_defaults = apply_cfd_mode_defaults(data.cfd_mode, data.solver_config)
         slurm_with_defaults = apply_cfd_mode_slurm_defaults(data.cfd_mode, data.slurm_config)
+        mesh_with_defaults = apply_cfd_mode_mesh_defaults(data.cfd_mode, data.mesh_config)
 
         # Surface correctness issues (symmetry factor, missing ground/wheels,
         # unset reference values) as warnings rather than silently shipping them.
@@ -134,7 +136,7 @@ class JobService:
             logger.warning("Job config (%s): %s", data.cfd_mode, warning)
         config = {
             "cfd_mode": data.cfd_mode,
-            "mesh": data.mesh_config.model_dump(),
+            "mesh": mesh_with_defaults.model_dump(),
             "solver": solver_with_defaults.model_dump(),
             "slurm": slurm_with_defaults.model_dump(),
         }

@@ -200,3 +200,59 @@ def test_per_profile_slurm_sizing():
     full = render_profile_artifacts("full_car")["run_solver.sh"]
     assert "#SBATCH --nodes=1" in comp and "#SBATCH --time=06:00:00" in comp
     assert "#SBATCH --nodes=2" in full and "#SBATCH --time=24:00:00" in full
+
+
+# ── M5 mesh workflow selection + prism wiring (AUDIT C6/C11) ──────────────
+
+
+def test_mesh_workflow_selection():
+    gen = JournalGenerator()
+    base = example_config("individual_part")["mesh"]
+    wt = gen.generate_mesh_journal({**base, "workflow": "watertight"}, "g", "/ws")
+    ft = gen.generate_mesh_journal({**base, "workflow": "fault-tolerant"}, "g", "/ws")
+    assert "Watertight Geometry" in wt and "Fault-tolerant Meshing" not in wt
+    assert "Fault-tolerant Meshing" in ft
+
+
+def test_mesh_workflow_unknown_raises():
+    gen = JournalGenerator()
+    base = example_config("individual_part")["mesh"]
+    with pytest.raises(ValueError):
+        gen.generate_mesh_journal({**base, "workflow": "bogus"}, "g", "/ws")
+
+
+def test_per_profile_mesh_workflow():
+    comp = render_profile_artifacts("individual_part")["mesh_only.jou"]
+    full = render_profile_artifacts("full_car")["mesh_only.jou"]
+    assert "Watertight Geometry" in comp
+    assert "Fault-tolerant Meshing" in full
+
+
+@pytest.mark.parametrize("profile", PROFILES)
+def test_prism_layer_count_from_config(profile: str):
+    # AUDIT C6: volume_mesh.num_layers must reach the Add Boundary Layers task
+    # (it was previously ignored).
+    mesh = render_profile_artifacts(profile)["mesh_only.jou"]
+    assert "'NumberOfLayers': 15" in mesh
+
+
+def test_named_selection_graceful_degradation():
+    # A bare component config with no wheels/ground/outlet must not emit those
+    # commands or crash (AUDIT: scheme must degrade when a zone is absent).
+    gen = JournalGenerator()
+    cfg = example_config("individual_part")
+    cfg["solver"]["boundary_conditions"] = {
+        "velocity_inlets": [{"zone_name": "inlet", "velocity": 15.65,
+                             "turbulent_intensity_pct": 5.0, "turbulent_viscosity_ratio": 10.0}],
+        "pressure_outlets": [], "translating_walls": [], "rotating_walls": [],
+        "slip_walls": [], "stationary_walls": [], "symmetry_planes": [],
+    }
+    out = gen.generate_solver_journal(cfg["solver"], "/ws/mesh.cas.h5", "/ws")
+    # Inspect command (non-comment) lines only — the BC partial documents the TUI
+    # format in comments, which would false-match a raw substring search.
+    cmds = "\n".join(
+        ln for ln in out.splitlines() if ln.strip() and not ln.strip().startswith(";")
+    )
+    assert "/define/boundary-conditions/wall " not in cmds   # no ground/wheel/slip walls
+    assert "zone-type symmetry symmetry" not in cmds         # no symmetry plane
+    assert out.rstrip().endswith("/exit yes")                # still a complete journal

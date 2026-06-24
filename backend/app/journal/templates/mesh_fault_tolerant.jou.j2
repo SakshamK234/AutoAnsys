@@ -23,27 +23,21 @@
 
 ; ── 1. Import CAD and Part Management ────────────────────────────────
 ; FT uses 'Import CAD and Part Management' (not Watertight's 'Import Geometry').
-(%py-exec "workflow.TaskObject['Import CAD and Part Management'].Arguments.set_state({'FileLoaded': r'yes', 'Context': 0, 'CreateObjectPer': r'Custom', 'FileName': r'/scratch/<user>/autoansys/jobs/<full_car_job>/geometry.x_t', 'LengthUnit': r'mm'})")
+(%py-exec "workflow.TaskObject['Import CAD and Part Management'].Arguments.set_state({'FileLoaded': r'yes', 'Context': 0, 'CreateObjectPer': r'Custom', 'FileName': r'{{ geometry_file }}', 'LengthUnit': r'{{ mesh.geometry_unit | default("mm") }}'})")
 (%py-exec "workflow.TaskObject['Import CAD and Part Management'].Execute()")
 
 ; ── 2. Describe Geometry and Flow ────────────────────────────────────
-(%py-exec "workflow.TaskObject['Describe Geometry and Flow'].Arguments.set_state({'AddEnclosure': r'No', 'CloseCaps': r'Yes', 'FlowType': r'Internal flow through the object'})")
+(%py-exec "workflow.TaskObject['Describe Geometry and Flow'].Arguments.set_state({'AddEnclosure': r'{{ 'Yes' if mesh.build_enclosure | default(false) else 'No' }}', 'CloseCaps': r'Yes', 'FlowType': r'Internal flow through the object'})")
 (%py-exec "workflow.TaskObject['Describe Geometry and Flow'].UpdateChildTasks(SetupTypeChanged=False)")
 (%py-exec "workflow.TaskObject['Describe Geometry and Flow'].Execute()")
 
 ; ── 3. Enclose Fluid Region (Capping) ────────────────────────────────
 ; Caps inlet/outlet/symmetry openings so the wrap produces a closed fluid volume.
 ; [needs-cluster] cap names must map to the SOP zone labels (inlet/outlet/symmetry).
-(%py-exec "workflow.TaskObject['Enclose Fluid Region (Capping)'].Arguments.set_state({'PatchName': r'inlet', 'ZoneType': r'velocity-inlet', 'CreatePatchPreferences': {'ShowCreatePatchPreferences': False}})")
+{% for zone in mesh.original_zones | default(["inlet", "outlet", "symmetry"]) %}
+(%py-exec "workflow.TaskObject['Enclose Fluid Region (Capping)'].Arguments.set_state({'PatchName': r'{{ zone }}', 'ZoneType': r'velocity-inlet', 'CreatePatchPreferences': {'ShowCreatePatchPreferences': False}})")
 (%py-exec "workflow.TaskObject['Enclose Fluid Region (Capping)'].AddChildAndUpdate()")
-(%py-exec "workflow.TaskObject['Enclose Fluid Region (Capping)'].Arguments.set_state({'PatchName': r'outlet', 'ZoneType': r'velocity-inlet', 'CreatePatchPreferences': {'ShowCreatePatchPreferences': False}})")
-(%py-exec "workflow.TaskObject['Enclose Fluid Region (Capping)'].AddChildAndUpdate()")
-(%py-exec "workflow.TaskObject['Enclose Fluid Region (Capping)'].Arguments.set_state({'PatchName': r'ground', 'ZoneType': r'velocity-inlet', 'CreatePatchPreferences': {'ShowCreatePatchPreferences': False}})")
-(%py-exec "workflow.TaskObject['Enclose Fluid Region (Capping)'].AddChildAndUpdate()")
-(%py-exec "workflow.TaskObject['Enclose Fluid Region (Capping)'].Arguments.set_state({'PatchName': r'symmetry', 'ZoneType': r'velocity-inlet', 'CreatePatchPreferences': {'ShowCreatePatchPreferences': False}})")
-(%py-exec "workflow.TaskObject['Enclose Fluid Region (Capping)'].AddChildAndUpdate()")
-(%py-exec "workflow.TaskObject['Enclose Fluid Region (Capping)'].Arguments.set_state({'PatchName': r'walls', 'ZoneType': r'velocity-inlet', 'CreatePatchPreferences': {'ShowCreatePatchPreferences': False}})")
-(%py-exec "workflow.TaskObject['Enclose Fluid Region (Capping)'].AddChildAndUpdate()")
+{% endfor %}
 
 ; ── 4. Extract Edge Features ─────────────────────────────────────────
 (%py-exec "workflow.TaskObject['Extract Edge Features'].Arguments.set_state({'ExtractMethodType': r'Intersection Loops', 'SelectionType': r'zone'})")
@@ -63,14 +57,14 @@
 (%py-exec "workflow.TaskObject['Choose Mesh Control Options'].Execute()")
 
 ; ── 8. Generate the Surface Mesh (wrap) ──────────────────────────────
-(%py-exec "workflow.TaskObject['Generate the Surface Mesh'].Arguments.set_state({'CFDSurfaceMeshControls': {'MinSize': 2.0, 'MaxSize': 264.0, 'GrowthRate': 1.2, 'CurvatureNormalAngle': 18.0}})")
+(%py-exec "workflow.TaskObject['Generate the Surface Mesh'].Arguments.set_state({'CFDSurfaceMeshControls': {'MinSize': {{ mesh.surface_mesh.min_size }}, 'MaxSize': {{ mesh.surface_mesh.max_size }}, 'GrowthRate': {{ mesh.surface_mesh.growth_rate }}, 'CurvatureNormalAngle': {{ mesh.surface_mesh.curvature_normal_angle }}}})")
 (%py-exec "workflow.TaskObject['Generate the Surface Mesh'].Execute()")
 
 ; ── 9. Update Region Settings ────────────────────────────────────────
 (%py-exec "workflow.TaskObject['Update Region Settings'].Execute()")
 
 ; ── 10. Add Boundary Layers (prism, count from config — AUDIT C6) ────
-(%py-exec "workflow.TaskObject['Add Boundary Layers'].Arguments.set_state({'LocalPrismPreferences': {'Continuous': r'Continuous'}, 'OffsetMethodType': r'last-ratio', 'NumberOfLayers': 15})")
+(%py-exec "workflow.TaskObject['Add Boundary Layers'].Arguments.set_state({'LocalPrismPreferences': {'Continuous': r'Continuous'}, 'OffsetMethodType': r'last-ratio', 'NumberOfLayers': {{ mesh.volume_mesh.num_layers | default(15) }}})")
 (%py-exec "workflow.TaskObject['Add Boundary Layers'].AddChildAndUpdate(DeferUpdate=False)")
 
 ; ── 11. Generate the Volume Mesh (poly-hexcore) ──────────────────────
@@ -87,7 +81,7 @@ yes
 (%py-exec "print('=== MESH ZONE LIST ===')")
 /define/boundary-conditions/list-zones
 
-/file/write-case "/scratch/<user>/autoansys/jobs/<full_car_job>/mesh.cas.h5"
+/file/write-case "{{ workspace }}/mesh.cas.h5"
 
 (%py-exec "print('=== MESH_CELL_COUNT_BEGIN ===')")
 /mesh/size-info

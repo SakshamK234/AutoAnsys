@@ -77,6 +77,11 @@ def test_per_profile_slurm_presets():
     assert full["nodes"] == 2 and full["walltime_hours"] == 24
 
 
+def test_per_profile_mesh_workflow():
+    assert resolve_profile("individual_part")["mesh"]["workflow"] == "watertight"
+    assert resolve_profile("full_car")["mesh"]["workflow"] == "fault-tolerant"
+
+
 def test_resolve_returns_independent_copies():
     # Mutating one resolution must not leak into the cached raw data.
     a = resolve_profile("full_car")

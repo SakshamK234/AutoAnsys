@@ -44,7 +44,12 @@
 (%py-exec "workflow.TaskObject['Update Regions'].Execute()")
 
 ; ── 7. Add Boundary Layers ──────────────────────────────────────────
-(%py-exec "workflow.TaskObject['Add Boundary Layers'].Arguments.set_state({'LocalPrismPreferences': {'Continuous': r'Continuous'}, 'OffsetMethodType': r'last-ratio'})")
+; Prism layer count is now driven from config (AUDIT C6 — volume_mesh.num_layers
+; was previously ignored). NumberOfLayers is a stable Watertight arg.
+; [needs-cluster] first_layer_height / y+ control needs the offset method set to
+; 'aspect-ratio' or 'uniform' (last-ratio doesn't take an absolute first height);
+; wire volume_mesh.first_layer_height once the y+ target is confirmed on ARC.
+(%py-exec "workflow.TaskObject['Add Boundary Layers'].Arguments.set_state({'LocalPrismPreferences': {'Continuous': r'Continuous'}, 'OffsetMethodType': r'last-ratio', 'NumberOfLayers': 15})")
 (%py-exec "workflow.TaskObject['Add Boundary Layers'].AddChildAndUpdate(DeferUpdate=False)")
 (%py-exec "workflow.TaskObject['last-ratio_1'].Execute()")
 

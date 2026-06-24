@@ -53,6 +53,13 @@ class JournalGenerator:
             cfd_mode=cfd_mode,
         )
 
+    # Mesh workflow → template. "watertight" (clean components) vs
+    # "fault-tolerant" (surface-wrapped, dirty full-car assemblies) — AUDIT C11.
+    _MESH_TEMPLATES = {
+        "watertight": "mesh_only.jou.j2",
+        "fault-tolerant": "mesh_fault_tolerant.jou.j2",
+    }
+
     def generate_mesh_journal(
         self,
         mesh_config: dict,
@@ -60,13 +67,21 @@ class JournalGenerator:
         workspace: str,
         cfd_mode: str = "individual_part",
     ) -> str:
-        """Generate a MESH-ONLY journal.
+        """Generate a MESH-ONLY journal for the configured mesh workflow.
 
-        Runs Fluent Watertight Meshing, writes mesh.cas.h5 into `workspace`,
-        and exits. The case file is the first-class artifact downstream
-        solver jobs will consume via generate_solver_journal().
+        Runs Fluent meshing (Watertight or Fault-tolerant per
+        ``mesh_config['workflow']``), writes mesh.cas.h5 into `workspace`, and
+        exits. The case file is the first-class artifact downstream solver jobs
+        consume via generate_solver_journal().
         """
-        template = self.env.get_template("mesh_only.jou.j2")
+        workflow = (mesh_config or {}).get("workflow", "watertight")
+        template_name = self._MESH_TEMPLATES.get(workflow)
+        if template_name is None:
+            raise ValueError(
+                f"Unknown mesh workflow {workflow!r}; "
+                f"expected one of {sorted(self._MESH_TEMPLATES)}"
+            )
+        template = self.env.get_template(template_name)
         return template.render(
             mesh=mesh_config,
             geometry_file=geometry_file,

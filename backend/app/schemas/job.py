@@ -99,6 +99,14 @@ class MeshConfig(BaseModel):
     enclosure: EnclosureConfig | None = Field(default_factory=EnclosureConfig)
     mesh_quality: MeshQuality = Field(default_factory=MeshQuality)
     geometry_unit: str = "mm"
+    # Mesh workflow (AUDIT C11): "watertight" for clean components, "fault-tolerant"
+    # (surface-wrapped) for dirty full-car assemblies. Profile-driven.
+    workflow: str = "watertight"
+    # When true, the pipeline builds the fluid enclosure from the part bounding box
+    # (AUDIT C10, maintainer decision #3) instead of assuming the geometry already
+    # contains a Discovery-built enclosure. Default false preserves the current
+    # pre-enclosed-geometry workflow; set true to hand the pipeline a bare part.
+    build_enclosure: bool = False
     # Face labels the user applied in Discovery to the Parasolid export.
     # Passed as Generate Surface Mesh `OriginalZones` so Fluent preserves them
     # through meshing. Matches the FSAE SOP convention exactly.
@@ -473,6 +481,22 @@ def apply_cfd_mode_slurm_defaults(mode: str, sc: "SlurmConfig") -> "SlurmConfig"
         sc.memory_gb = preset.get("memory_gb", sc.memory_gb)
         sc.walltime_hours = preset.get("walltime_hours", sc.walltime_hours)
     return sc
+
+
+def apply_cfd_mode_mesh_defaults(mode: str, mc: "MeshConfig") -> "MeshConfig":
+    """Seed the per-profile mesh workflow (watertight vs fault-tolerant).
+
+    Applied only while ``workflow`` is still at the schema default ("watertight"),
+    so a user who chose a workflow is not overridden. Unknown modes are a no-op.
+    """
+    try:
+        profile = resolve_profile(mode)
+    except UnknownProfileError:
+        return mc
+    preset = profile.get("mesh") or {}
+    if mc.workflow == "watertight" and "workflow" in preset:
+        mc.workflow = preset["workflow"]
+    return mc
 
 
 # ── Top-level Job Schemas ────────────────────────────────────────────────

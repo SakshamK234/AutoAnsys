@@ -58,8 +58,21 @@ _MESH: dict = {
         "auto_improve": True,
     },
     "geometry_unit": "mm",
+    "workflow": "watertight",
+    "build_enclosure": False,
     "original_zones": ["inlet", "outlet", "ground", "symmetry", "walls"],
 }
+
+# Full car uses the fault-tolerant (surface-wrapped) workflow (AUDIT C11).
+_MESH_OVERRIDES: dict = {
+    "full_car": {"workflow": "fault-tolerant"},
+}
+
+
+def _mesh_for(cfd_mode: str) -> dict:
+    m = copy.deepcopy(_MESH)
+    m.update(_MESH_OVERRIDES.get(cfd_mode, {}))
+    return m
 
 _SOLUTION_METHODS: dict = {
     "scheme": "Coupled",
@@ -242,7 +255,7 @@ def example_config(cfd_mode: str) -> dict:
         raise ValueError(f"Unknown cfd_mode {cfd_mode!r}")
     return copy.deepcopy({
         "cfd_mode": cfd_mode,
-        "mesh": _MESH,
+        "mesh": _mesh_for(cfd_mode),
         "solver": solver,
         "slurm": _slurm_for(cfd_mode),
     })
