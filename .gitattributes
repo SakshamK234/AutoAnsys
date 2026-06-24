@@ -1,2 +1,9 @@
 # Shell scripts must use LF so Linux containers can execute them (Windows CRLF breaks ENTRYPOINT).
 *.sh text eol=lf
+
+# Jinja templates render the cluster-side run.sh / journals; a CRLF-checked-out
+# template would produce a CRLF run.sh that fails on Linux ("bad interpreter").
+# Generated journals (.jou) and the golden fixtures must likewise stay LF (AUDIT E3).
+*.j2 text eol=lf
+*.jou text eol=lf
+*.yaml text eol=lf

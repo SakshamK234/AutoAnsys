@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     # ── ANSYS / Fluent ────────────────────────────────────────────────────
     FLUENT_MODULE: str = "ANSYS/2025R1"
 
+    # ── Reproducibility ───────────────────────────────────────────────────
+    # App git SHA, set at container build time (e.g. ARG GIT_SHA in the Dockerfile)
+    # and recorded in each run's run_metadata.json. "unknown" when not provided.
+    GIT_SHA: str = "unknown"
+
     # ── Polling ───────────────────────────────────────────────────────────
     JOB_POLL_INTERVAL: int = 30
 

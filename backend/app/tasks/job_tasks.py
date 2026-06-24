@@ -159,6 +159,18 @@ def submit_job_to_cluster(self, job_id: str) -> dict:
             sftp_client = ssh.open_sftp()
             sftp = SFTPManager(sftp_client)
 
+            # Reproducibility record (AUDIT E5): what produced this run.
+            from app.run_metadata import build_run_metadata, to_json
+            run_meta = build_run_metadata(
+                kind="job",
+                entity_id=str(job.id),
+                cfd_mode=job.config.get("cfd_mode", "individual_part"),
+                config=job.config,
+                fluent_module=settings.FLUENT_MODULE,
+                git_sha=settings.GIT_SHA,
+            )
+            sftp.upload_string(to_json(run_meta), f"{workspace}/run_metadata.json")
+
             if mesh is not None:
                 # SPLIT PATH — solver reads an existing mesh.cas.h5
                 solver_jou = gen.generate_solver_journal(
@@ -430,6 +442,7 @@ def _download_real_results(db, job: Job, s3) -> int:
     known_files = {
         "forces.csv": "forces_csv",
         "residuals.csv": "residuals_csv",
+        "run_metadata.json": "run_metadata",
         "result.cas.h5": "case_data",
         "result.msh.h5": "mesh_data",
         "contour_velocity.png": "contour_image",

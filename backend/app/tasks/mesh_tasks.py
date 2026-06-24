@@ -173,9 +173,21 @@ def submit_mesh_to_cluster(self, mesh_id: str) -> dict:
             sftp_client = ssh.open_sftp()
             sftp = SFTPManager(sftp_client)
 
+            # Reproducibility record (AUDIT E5).
+            from app.run_metadata import build_run_metadata, to_json
+            run_meta = build_run_metadata(
+                kind="mesh",
+                entity_id=str(mesh.id),
+                cfd_mode=mesh.config.get("cfd_mode", "individual_part"),
+                config=mesh.config,
+                fluent_module=settings.FLUENT_MODULE,
+                git_sha=settings.GIT_SHA,
+            )
+
             sftp.upload_file(local_geom_path, f"{workspace}/{geom_filename}")
             sftp.upload_string(mesh_jou, f"{workspace}/autoansys.jou")
             sftp.upload_string(slurm_sh, f"{workspace}/run.sh")
+            sftp.upload_string(to_json(run_meta), f"{workspace}/run_metadata.json")
             sftp.close()
 
             slurm_job_id = slurm_mgr.submit_job(f"{workspace}/run.sh")

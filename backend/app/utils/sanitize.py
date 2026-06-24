@@ -35,11 +35,21 @@ def sanitize_for_shell(value: str) -> str:
 
 
 def sanitize_path(value: str) -> str:
-    """Sanitize a file path, allowing only safe characters.
+    """Sanitize a file path component, allowing only safe characters.
 
-    Allows: alphanumeric, /, -, _, .
+    Allows: alphanumeric, -, _, . — and strips path separators and parent
+    references so the result is always a single safe basename. Previously this
+    kept ``/`` and ``.`` so inputs like ``../../etc/passwd`` survived intact and
+    could escape the job workspace (AUDIT E6). We now reduce to the basename and
+    drop ``..`` segments entirely.
     """
-    return re.sub(r'[^a-zA-Z0-9/\-_.]', '', str(value)).strip()
+    # Take the last path segment, then drop any remaining parent refs / seps.
+    base = re.split(r'[\\/]', str(value))[-1]
+    cleaned = re.sub(r'[^a-zA-Z0-9\-_.]', '', base).strip()
+    # A name that is only dots (".", "..") is unsafe / meaningless → empty.
+    if set(cleaned) <= {"."}:
+        return ""
+    return cleaned
 
 
 def validate_numeric(value, min_val: float | None = None, max_val: float | None = None) -> float:
