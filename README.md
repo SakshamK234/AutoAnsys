@@ -15,6 +15,37 @@ docker compose up --build
 
 By default, **`CLUSTER_MOCK_MODE=true`** so the stack runs without a real cluster (mock jobs complete for UI development). To submit to your site’s HPC, set `CLUSTER_MOCK_MODE=false` and configure cluster variables in `.env` (see below).
 
+## Running a CFD job
+
+A job is driven by one **run profile** (`cfd_mode`), which selects domain/symmetry,
+ground/wheel BCs, mesh strategy, reference values, and SLURM sizing — one pipeline,
+two scopes:
+
+- **Component** (`individual_part`) — a single part/sub-assembly. Watertight mesh,
+  1 node / 6 h, symmetry plane + ×2 force factor.
+- **Full car** (`full_car`) — the whole assembly, run half-car. Fault-tolerant
+  (surface-wrapped) mesh, 2 nodes / 24 h, moving ground + rotating wheels +
+  symmetry + ×2.
+
+End to end: upload a geometry (Parasolid recommended) → **New Job** wizard → pick the
+profile, adjust mesh/solver/resources → **Submit**. AutoAnsys renders the Fluent
+journal + SLURM script, runs it in scratch, and returns forces (N), coefficients
+(Cd/Cl/Cm), residuals, and contour images. The split workflow lets one **mesh** feed
+many **solves** (sweeps reuse the mesh).
+
+**Preview without a cluster** — render every artifact for both profiles offline:
+
+```bash
+cd backend && python -m app.journal.validate --out ./_dryrun
+```
+
+### Docs
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — stage diagram, module map, run-profile design
+- [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) — every config parameter + both profiles
+- [RUNBOOK.md](RUNBOOK.md) — submit / monitor / retrieve + troubleshooting
+- [VALIDATION.md](VALIDATION.md) — what must be validated on the real cluster
+- [AUDIT.md](AUDIT.md) · [PLAN.md](PLAN.md) · [CHANGES.md](CHANGES.md) — the audit, plan, and change summary
+
 ## Configuration (public / production)
 
 - **Never commit** a real `.env` or SSH private keys. The repository uses **placeholders** such as `your_netid`, `your_slurm_account`, and `cluster-login.example.edu`.

@@ -52,26 +52,32 @@ Best for long-running simulations or when you don't need immediate results.
 
 ### SLURM Batch Script
 
-The generated script looks like:
+The generated script looks like (per-profile resources; Fluent is launched as one
+MPI rank per task — `--ntasks-per-node=N --cpus-per-task=1`, **not**
+`--cpus-per-task=N`, which would run silently serial):
 
 ```bash
 #!/bin/bash
 #SBATCH --job-name=autoansys_cfd
-#SBATCH --account=your_slurm_account
+#SBATCH --account=fsae
 #SBATCH --partition=normal_q
-#SBATCH --nodes=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=128
+#SBATCH --nodes=2                 # full_car; component = 1
+#SBATCH --ntasks-per-node=128
+#SBATCH --cpus-per-task=1
+#SBATCH --exclusive
 #SBATCH --mem=243G
-#SBATCH --time=12:00:00
-#SBATCH --output=slurm-%j.out
-#SBATCH --error=slurm-%j.err
+#SBATCH --time=24:00:00           # full_car; component = 6h
+#SBATCH --output=/scratch/<user>/autoansys/jobs/<id>/slurm-%j.out
 
 module reset
-module load Ansys/2025R1
+module load ANSYS/2025R1
 
-fluent 3ddp -t${SLURM_CPUS_PER_TASK} -g -i mesh_watertight.jou
+NCORES=${SLURM_NTASKS}
+scontrol show hostnames "$SLURM_JOB_NODELIST" > hostfile.txt
+fluent 3ddp -g -t${NCORES} -mpi=intel -pib -cnf=hostfile.txt -i autoansys.jou
 ```
+
+Workspaces live in **scratch** (`/scratch/<user>/autoansys/jobs/<id>/`), not home.
 
 ### Partitions
 
