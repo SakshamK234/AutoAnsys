@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { DEFAULT_MESH_CONFIG, DEFAULT_SOLVER_CONFIG, DEFAULT_SLURM_CONFIG } from '@/lib/constants';
-import { FileText, Plus, Sparkles, Trash2, Share2, Star, X, Rocket, Settings } from 'lucide-react';
+import { FileText, Plus, Trash2, Share2, Star, X, Rocket, Settings } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import type { SimulationTemplate } from '@/types';
 
@@ -224,10 +224,14 @@ export function TemplatesPage() {
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     {t.is_recommended && (
-                      <Star className="h-3.5 w-3.5 text-amber-500" title="Recommended" />
+                      <span title="Recommended">
+                        <Star className="h-3.5 w-3.5 text-amber-500" />
+                      </span>
                     )}
                     {t.is_shared && (
-                      <Share2 className="h-3.5 w-3.5 text-blue-500" title="Shared" />
+                      <span title="Shared">
+                        <Share2 className="h-3.5 w-3.5 text-blue-500" />
+                      </span>
                     )}
                   </div>
                 </div>

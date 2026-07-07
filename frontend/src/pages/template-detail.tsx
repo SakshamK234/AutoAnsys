@@ -6,7 +6,7 @@ import { DEFAULT_MESH_CONFIG, DEFAULT_SOLVER_CONFIG, DEFAULT_SLURM_CONFIG } from
 import { MeshConfigStep } from '@/components/wizard/mesh-config-step';
 import { SolverConfigStep } from '@/components/wizard/solver-config-step';
 import { ResourceConfigStep } from '@/components/wizard/resource-config-step';
-import { ArrowLeft, Save, Rocket, Share2, Pencil, Check, X } from 'lucide-react';
+import { ArrowLeft, Save, Rocket, Share2, Pencil, Check } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
 import type { SimulationTemplate, MeshConfig, SolverConfig, SlurmConfig } from '@/types';
 

@@ -11,9 +11,8 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { useJobs } from '@/hooks/use-jobs';
-import { JobStatusBadge } from '@/components/jobs/job-status-badge';
 import { cn, formatDate } from '@/lib/utils';
-import { GitCompareArrows, Plus, X, BarChart3, TrendingDown } from 'lucide-react';
+import { GitCompareArrows, X, BarChart3, TrendingDown } from 'lucide-react';
 import api from '@/lib/api';
 import type { Job, ForceReport, ResidualData } from '@/types';
 

@@ -8,6 +8,13 @@
     "types": ["vite/client"],
     "skipLibCheck": true,
 
+    /* Path alias — must match vite.config.ts `alias: { '@': '/src' }`.
+       Without this, tsc cannot resolve any of the ~125 `@/` imports. */
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+
     /* Bundler mode */
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,

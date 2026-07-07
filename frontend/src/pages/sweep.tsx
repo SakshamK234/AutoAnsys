@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGeometries } from '@/hooks/use-geometries';
-import { DEFAULT_MESH_CONFIG, DEFAULT_SOLVER_CONFIG, DEFAULT_SLURM_CONFIG, VELOCITY_PRESETS } from '@/lib/constants';
-import { cn, formatDate } from '@/lib/utils';
-import { Layers, Plus, X, Send, AlertCircle, Check, ArrowRight } from 'lucide-react';
+import { DEFAULT_MESH_CONFIG, DEFAULT_SOLVER_CONFIG, DEFAULT_SLURM_CONFIG } from '@/lib/constants';
+import { cn } from '@/lib/utils';
+import { Layers, Plus, X, AlertCircle, Check, ArrowRight } from 'lucide-react';
 import api from '@/lib/api';
-import type { MeshConfig, SolverConfig, SlurmConfig } from '@/types';
 
 /** Predefined sweep parameter options for FSAE CFD */
 const SWEEP_PRESETS = [

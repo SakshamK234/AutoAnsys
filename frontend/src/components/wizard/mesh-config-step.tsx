@@ -10,6 +10,7 @@ const DEFAULT_ENCLOSURE: EnclosureConfig = {
   bottom_mm: 2500,
   left_mm: 2500,
   right_mm: 2500,
+  flow_axis: '+x',
 };
 
 interface MeshConfigStepProps {
