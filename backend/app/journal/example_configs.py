@@ -37,7 +37,10 @@ _MESH: dict = {
     "volume_mesh": {
         "max_cell_length": 0.15,
         "growth_rate": 1.2,
-        "first_layer_height": 5e-05,
+        # F9: opt-in absolute first prism height (mm) for wall-resolved y+ ≈ 1;
+        # None keeps the proven SOP last-ratio defaults.
+        "first_layer_height_mm": None,
+        "first_layer_height": 5e-05,  # deprecated, never emitted
         "num_layers": 15,
         "bl_growth_rate": 1.2,
     },
@@ -202,7 +205,8 @@ _FULL_CAR_SOLVER: dict = {
     },
     "boundary_conditions": {
         "velocity_inlets": [_inlet()],
-        "pressure_outlets": [],
+        # F4 fix: the specialist preset omitted an outlet (AUDIT C8).
+        "pressure_outlets": [{"zone_name": "outlet", "gauge_pressure": 0.0}],
         "translating_walls": [_ground()],
         "rotating_walls": [
             {

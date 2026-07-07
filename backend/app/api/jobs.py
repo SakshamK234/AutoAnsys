@@ -350,8 +350,8 @@ async def sync_job_status(
 ) -> dict:
     """Check the job's real status on the cluster and update the DB.
 
-    Useful when a job was cancelled via terminal (scancel) or the OOD
-    session expired — the periodic poller may not have picked it up yet.
+    Useful when a job was cancelled via terminal (scancel) — the periodic
+    poller may not have picked it up yet.
     """
     service = JobService(db)
     job = await service.sync_job_status(user=current_user, job_id=job_id)

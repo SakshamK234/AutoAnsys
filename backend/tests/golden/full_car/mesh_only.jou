@@ -70,6 +70,7 @@
 (%py-exec "workflow.TaskObject['Update Region Settings'].Execute()")
 
 ; ── 10. Add Boundary Layers (prism, count from config — AUDIT C6) ────
+; F9: optional FirstHeight for a wall-resolved y+ ≈ 1 first cell.
 (%py-exec "workflow.TaskObject['Add Boundary Layers'].Arguments.set_state({'LocalPrismPreferences': {'Continuous': r'Continuous'}, 'OffsetMethodType': r'last-ratio', 'NumberOfLayers': 15})")
 (%py-exec "workflow.TaskObject['Add Boundary Layers'].AddChildAndUpdate(DeferUpdate=False)")
 

@@ -44,6 +44,18 @@ A `--validate` dry-run renders every artifact for both profiles without Fluent.
 - Full-car **reference area (F1)**, **body wall pattern (F3)**, air **density**.
 - Confirm multi-node MPI spans nodes and HPC-Pack licensing (S1/S2).
 
+## Maintainer decisions (2026-07-07)
+
+| Item | Decision | Effect |
+|---|---|---|
+| F1 full-car ref area | Keep `0.65` placeholder | Still flagged; replace with measured full frontal area before trusting full-car Cd/Cl |
+| F3 body wall pattern | Keep `wall-body*` guess | Confirm against a real mesh zone list |
+| F9 y+ target | Wall-resolved y+ ≈ 1 | `volume_mesh.first_layer_height_mm` (opt-in) emits `FirstHeight`; unset keeps proven SOP prism defaults |
+| F4 full-car outlet | **Fix** | `pressure_outlets: outlet` added to the full_car preset (yaml + fixtures + frontend mirror) |
+| Air density | Keep 1.225 kg/m³ | — |
+| E1 OOD session mode | **Removed** | Dead `_sync_session_job` + docs Method 2 deleted; legacy `session:` ids are skipped with a warning |
+| Wizard → `/api/profiles` | Deferred | Mirror is synced; live rewiring awaits a verifiable frontend session |
+
 ## Completed follow-ups (post-M7)
 
 - **Per-profile defaults endpoint:** `GET /api/profiles` + `GET /api/profiles/{mode}`

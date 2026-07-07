@@ -64,7 +64,8 @@
 (%py-exec "workflow.TaskObject['Update Region Settings'].Execute()")
 
 ; ── 10. Add Boundary Layers (prism, count from config — AUDIT C6) ────
-(%py-exec "workflow.TaskObject['Add Boundary Layers'].Arguments.set_state({'LocalPrismPreferences': {'Continuous': r'Continuous'}, 'OffsetMethodType': r'last-ratio', 'NumberOfLayers': {{ mesh.volume_mesh.num_layers | default(15) }}})")
+; F9: optional FirstHeight for a wall-resolved y+ ≈ 1 first cell.
+(%py-exec "workflow.TaskObject['Add Boundary Layers'].Arguments.set_state({'LocalPrismPreferences': {'Continuous': r'Continuous'}, 'OffsetMethodType': r'last-ratio', 'NumberOfLayers': {{ mesh.volume_mesh.num_layers | default(15) }}{% if mesh.volume_mesh.first_layer_height_mm %}, 'FirstHeight': {{ mesh.volume_mesh.first_layer_height_mm }}{% endif %}})")
 (%py-exec "workflow.TaskObject['Add Boundary Layers'].AddChildAndUpdate(DeferUpdate=False)")
 
 ; ── 11. Generate the Volume Mesh (poly-hexcore) ──────────────────────

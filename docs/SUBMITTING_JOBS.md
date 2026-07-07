@@ -1,9 +1,12 @@
 # Submitting Simulation Jobs
 
-AutoAnsys supports two ways to run CFD simulations on Virginia Tech's ARC TinkerCliffs cluster:
+AutoAnsys runs CFD simulations on Virginia Tech's ARC TinkerCliffs cluster in
+**batch mode**: jobs are submitted to the SLURM queue via `sbatch`, may wait for
+resources, and need no active session.
 
-1. **Batch Mode** — Submit to the SLURM queue via `sbatch`. May wait in queue but requires no active session.
-2. **OOD Session Mode** — Run instantly on an existing Open OnDemand interactive session using `srun --overlap`.
+> An "OOD Session Mode" (running inside an existing Open OnDemand allocation via
+> `srun --overlap`) was previously described here but never had a working submit
+> path; its dead code was removed during the pipeline audit (AUDIT E1).
 
 ---
 
@@ -90,76 +93,6 @@ Workspaces live in **scratch** (`/scratch/<user>/autoansys/jobs/<id>/`), not hom
 
 ---
 
-## Method 2: OOD Session Mode (Instant Start)
-
-Best for quick iterations when you already have an interactive session running on ARC Open OnDemand.
-
-### Prerequisites
-
-You need an active interactive session on [ARC Open OnDemand](https://ood.arc.vt.edu):
-
-1. Log in to **https://ood.arc.vt.edu**
-2. Go to **Interactive Apps** > **TinkerCliffs Desktop** (or any compute session)
-3. Request resources (cores, memory, time) and launch
-4. Once the session starts, note the **compute node name** from the session URL:
-   ```
-   https://ood.arc.vt.edu/rnode/tc064/42897/...
-                                   ^^^^^
-                              This is your compute node
-   ```
-
-### Steps
-
-1. Navigate to **New Job** (`/new-job`)
-2. Configure **Geometry**, **Mesh**, and **Solver** as usual
-3. **Resources** — Select **"Run on OOD Session"** and enter:
-
-   | Field | Description | Example |
-   |-------|-------------|---------|
-   | Compute Node | Node name from your OOD session URL | `tc064` |
-   | Cores | Number of cores to use (match your OOD allocation) | 32 |
-
-4. **Review** — Verify settings, then click **Launch on OOD Session**
-
-### What Happens on Submit
-
-1. AutoAnsys SSHs to the ARC login node, then jumps to your compute node via ProxyJump
-2. Verifies your compute node has an active SLURM allocation by checking `squeue`
-3. Creates the workspace and uploads files to the compute node
-4. Launches Fluent using your existing allocation:
-   ```bash
-   srun --jobid=<YOUR_SLURM_JOB_ID> --overlap -N1 -n1 -c32 \
-     fluent 3ddp -t32 -g -i mesh_watertight.jou
-   ```
-5. Monitors the process directly (PID-based) instead of polling SLURM
-
-### Why `srun --overlap`?
-
-Your OOD session already has a SLURM allocation. Using `srun --jobid=... --overlap` runs Fluent **within** that existing allocation without conflicting with the parent OOD job. This means:
-
-- No queue wait — starts immediately
-- Uses resources from your existing allocation
-- Proper SLURM accounting (the work is tracked under your allocation)
-
-### Finding Your Compute Node
-
-Your OOD session URL contains the compute node name:
-
-```
-https://ood.arc.vt.edu/rnode/tc064/42897/vnc.html
-                                ^^^^^
-```
-
-Valid compute node names match the pattern `tc` followed by 3-4 digits (e.g., `tc064`, `tc1023`).
-
-**Do NOT enter:**
-- `tinkercliffs1` or `tinkercliffs2` — these are **login nodes**, not compute nodes
-- Random hostnames — must be an active TinkerCliffs compute node
-
-AutoAnsys will reject login node names and invalid compute node names at submission time.
-
----
-
 ## Monitoring Your Job
 
 After submission, you're redirected to the job detail page where you can:
@@ -184,25 +117,14 @@ After submission, you're redirected to the job detail page where you can:
 
 ## Cancelling a Job
 
-- **Batch mode:** AutoAnsys runs `scancel <slurm_job_id>` to cancel the SLURM job
-- **OOD session mode:** AutoAnsys kills the Fluent process on the compute node
-
-Click the **Cancel** button on the job detail page.
+AutoAnsys runs `scancel <slurm_job_id>` to cancel the SLURM job. Click the
+**Cancel** button on the job detail page.
 
 ---
 
 ## Troubleshooting
 
-### "That is a LOGIN node" error
-You entered `tinkercliffs1` or `tinkercliffs2` as the compute node. These are login nodes — enter the compute node from your OOD session URL instead (e.g., `tc064`).
-
-### "Invalid compute node name" error
-The node name doesn't match the expected pattern (`tc` + 3-4 digits). Double-check your OOD session URL.
-
-### "No active SLURM allocation found" error
-Your OOD session may have expired or the node doesn't have a running job under your user. Check `squeue --me` on the cluster or launch a new OOD session.
-
-### Job stuck in "queued" (batch mode)
+### Job stuck in "queued"
 The SLURM scheduler hasn't allocated resources yet. This is normal — check queue position with `squeue -u $USER` on the cluster. Busy partitions can have long wait times.
 
 ### Job fails immediately
@@ -212,5 +134,6 @@ Check the SLURM output log on the job detail page. Common causes:
 - Fluent license unavailable
 - Module load failure
 
-### OOD session timed out mid-run
-If your OOD session's walltime expires while Fluent is running, the job will fail. Request enough walltime in your OOD session to cover the full simulation.
+For meshing failures, MPI/licensing issues, convergence stalls, and
+symmetry-factor mistakes, see the fuller troubleshooting guide in
+[RUNBOOK.md](RUNBOOK.md).

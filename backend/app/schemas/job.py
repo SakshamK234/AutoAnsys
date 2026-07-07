@@ -47,7 +47,17 @@ class SurfaceMeshConfig(BaseModel):
 class VolumeMeshConfig(BaseModel):
     max_cell_length: float = 0.15
     growth_rate: float = 1.2
-    # Boundary-layer params
+    # Boundary-layer params. num_layers is wired into Add Boundary Layers (M5).
+    #
+    # first_layer_height_mm (F9): explicit first prism-cell height in mm for a
+    # wall-resolved y+ ≈ 1 target with k-ω SST (~0.02–0.05 mm at 15.65 m/s for
+    # FSAE-scale parts). OPT-IN: when None (default) the journal keeps the SOP
+    # last-ratio defaults exactly as the team has run them; when set, the
+    # Add Boundary Layers task gets 'FirstHeight'. [needs-cluster] verify the
+    # 2025R1 arg is honoured with OffsetMethodType='last-ratio'.
+    first_layer_height_mm: float | None = None
+    # Deprecated: never reached Fluent (AUDIT C6) and its unit was ambiguous.
+    # Kept so stored configs still validate; use first_layer_height_mm instead.
     first_layer_height: float = 5e-5
     num_layers: int = 15
     bl_growth_rate: float = 1.2

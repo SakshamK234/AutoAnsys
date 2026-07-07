@@ -130,8 +130,11 @@ Search the repo for `needs-cluster` to find every item built to documented
 - Fault-tolerant meshing journal (`mesh_fault_tolerant.jou.j2`) — task args,
   capping, material point.
 - `/solve/convergence-conditions` TUI arg order.
-- Prism **first-layer height / y+** control (only `NumberOfLayers` is wired; the
-  absolute first-cell height needs a different offset method — set the y+ target).
+- Prism **first-layer height** (F9): target chosen = wall-resolved **y+ ≈ 1**.
+  Setting `volume_mesh.first_layer_height_mm` emits `FirstHeight` on the Add
+  Boundary Layers task — verify 2025R1 honours it with
+  `OffsetMethodType='last-ratio'`, and check the achieved y+ on the body after a
+  solve (y+ contour). Unset keeps the proven SOP defaults.
 - Real Fluent **report-file header** format and the **residual-capture mechanism**
   (`report-type iteration` may not emit residual values — transcript parsing of
   `fluent.log` may be required).

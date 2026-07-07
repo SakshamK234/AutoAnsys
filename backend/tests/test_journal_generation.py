@@ -236,6 +236,32 @@ def test_prism_layer_count_from_config(profile: str):
     assert "'NumberOfLayers': 15" in mesh
 
 
+def test_first_layer_height_opt_in():
+    # F9: FirstHeight is emitted only when first_layer_height_mm is set, so the
+    # proven SOP prism defaults are untouched otherwise.
+    gen = JournalGenerator()
+    base = example_config("individual_part")["mesh"]
+
+    def commands(journal: str) -> str:
+        # Command lines only — template comments mention FirstHeight too.
+        return "\n".join(
+            ln for ln in journal.splitlines() if ln.strip() and not ln.strip().startswith(";")
+        )
+
+    default = commands(gen.generate_mesh_journal(base, "g", "/ws"))
+    assert "FirstHeight" not in default
+
+    custom = {**base, "volume_mesh": {**base["volume_mesh"], "first_layer_height_mm": 0.05}}
+    wired = commands(gen.generate_mesh_journal(custom, "g", "/ws"))
+    assert "'FirstHeight': 0.05" in wired
+
+
+def test_full_car_has_pressure_outlet():
+    # F4 (maintainer-confirmed): the full_car preset must include an outlet.
+    content = render_profile_artifacts("full_car")["solver_from_case.jou"]
+    assert "/define/boundary-conditions/zone-type outlet pressure-outlet" in content
+
+
 def test_named_selection_graceful_degradation():
     # A bare component config with no wheels/ground/outlet must not emit those
     # commands or crash (AUDIT: scheme must degrade when a zone is absent).

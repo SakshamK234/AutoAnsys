@@ -104,6 +104,12 @@ export interface SurfaceMeshConfig {
 export interface VolumeMeshConfig {
   max_cell_length: number;
   growth_rate: number;
+  /**
+   * Opt-in absolute first prism-cell height in mm (wall-resolved y+ ≈ 1 with
+   * k-ω SST: ~0.02–0.05 mm at 15.65 m/s). null keeps the SOP defaults.
+   */
+  first_layer_height_mm?: number | null;
+  /** Deprecated — never reached Fluent; use first_layer_height_mm. */
   first_layer_height: number;
   num_layers: number;
   bl_growth_rate: number;

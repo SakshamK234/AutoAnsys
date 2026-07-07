@@ -66,8 +66,8 @@ def test_full_car_preset_values():
     assert bc["symmetry_planes"][0]["zone_name"] == "symmetry"
     assert p["symmetry"]["half_model"] is True
     assert p["symmetry"]["force_factor"] == 2.0
-    # Still open (AUDIT C8 / F4): no pressure outlet in the specialist preset.
-    assert bc.get("pressure_outlets") is None
+    # F4 fix (maintainer-confirmed): the specialist preset omitted an outlet.
+    assert bc["pressure_outlets"][0]["zone_name"] == "outlet"
 
 
 def test_per_profile_slurm_presets():

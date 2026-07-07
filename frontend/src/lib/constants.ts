@@ -268,7 +268,9 @@ export function applyCfdModeDefaults(mode: CfdMode, solver: SolverConfig): Solve
             turbulent_viscosity_ratio: 10.0,
           },
         ],
-        pressure_outlets: [],
+        // F4 fix: the specialist preset omitted an outlet; an external-aero
+        // domain needs one. Matches the backend preset (profiles.yaml).
+        pressure_outlets: [{ zone_name: 'outlet', gauge_pressure: 0.0 }],
         translating_walls: [
           {
             zone_name: 'ground',

@@ -197,10 +197,8 @@ class JobService:
     # ── Sync Status ───────────────────────────────────────────────────────
 
     async def sync_job_status(self, user: User, job_id: uuid.UUID) -> Job:
-        """Check the cluster for the real status and update the DB immediately.
+        """Check the cluster (sacct) for the real status and update the DB.
 
-        For batch jobs: queries sacct.
-        For session jobs: checks if PID is still alive.
         Returns the (possibly updated) job.
         """
         job = await self._get_user_job(user, job_id)
@@ -212,12 +210,18 @@ class JobService:
         if not job.slurm_job_id:
             return job
 
-        is_session = job.slurm_job_id.startswith("session:")
+        # OOD "session" jobs (slurm_job_id "session:<pid>@<node>") were part of a
+        # feature that never shipped a submit path; its sync helper imported a
+        # module that does not exist (AUDIT E1). The dead code was removed — skip
+        # any legacy row rather than feeding a non-numeric id to sacct.
+        if job.slurm_job_id.startswith("session:"):
+            logger.warning(
+                "Job %s has a legacy OOD-session id (%s); session mode was removed "
+                "— cancel or resubmit the job", job.id, job.slurm_job_id,
+            )
+            return job
 
-        if is_session:
-            new_status = self._sync_session_job(job)
-        else:
-            new_status = self._sync_batch_job(job)
+        new_status = self._sync_batch_job(job)
 
         if new_status and new_status != job.status:
             job.status = new_status
@@ -262,44 +266,6 @@ class JobService:
         finally:
             if ssh and not settings.CLUSTER_MOCK_MODE:
                 ssh.close()
-
-    @staticmethod
-    def _sync_session_job(job: Job) -> "JobStatus | None":
-        """Check if the session Fluent process is still alive."""
-        if not job.slurm_job_id or not job.slurm_job_id.startswith("session:"):
-            return None
-        try:
-            rest = job.slurm_job_id[len("session:"):]
-            pid_str, compute_node = rest.split("@", 1)
-            pid = int(pid_str)
-        except (ValueError, IndexError):
-            return None
-
-        session_ssh = None
-        try:
-            if settings.CLUSTER_MOCK_MODE:
-                from app.cluster.mock import MockSessionSSHManager
-                session_ssh = MockSessionSSHManager(compute_node)
-            else:
-                from app.cluster.session import SessionSSHManager
-                session_ssh = SessionSSHManager(compute_node)
-
-            session_ssh.connect()
-
-            if session_ssh.is_pid_alive(pid):
-                return None  # still running
-
-            workspace = job.cluster_workspace or ""
-            out, _, _ = session_ssh.execute_command(
-                f"ls {workspace}/result.cas.h5 2>/dev/null && echo FOUND || echo NOTFOUND"
-            )
-            return JobStatus.completed if "FOUND" in out else JobStatus.failed
-        except Exception:
-            logger.exception("Failed to sync session job %s", job.id)
-            return None
-        finally:
-            if session_ssh:
-                session_ssh.close()
 
     # ── Cancel ────────────────────────────────────────────────────────────
 

@@ -100,7 +100,11 @@ profiles:
           velocity: 15.65
           turbulent_intensity_pct: 5.0
           turbulent_viscosity_ratio: 10.0
-      # NOTE (AUDIT C8): no pressure_outlets in the specialist preset — confirm (F4).
+      # F4 (maintainer-confirmed fix): the specialist preset omitted an outlet
+      # (AUDIT C8); an external-aero domain needs one.
+      pressure_outlets:
+        - zone_name: outlet
+          gauge_pressure: 0.0
       translating_walls:
         - zone_name: ground
           velocity_mps: 15.65

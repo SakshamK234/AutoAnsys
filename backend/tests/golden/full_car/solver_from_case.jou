@@ -69,6 +69,8 @@
 ; Default Fluent wall behaviour; we just pin the zone-type explicitly.
 
 ; ── Pressure outlets ─────────────────────────────────────────────────
+/define/boundary-conditions/zone-type outlet pressure-outlet
+/define/boundary-conditions/set/pressure-outlet outlet () pgauge no 0.0 quit
 
 ; ── Symmetry planes ──────────────────────────────────────────────────
 /define/boundary-conditions/zone-type symmetry symmetry

@@ -57,12 +57,13 @@
 (%py-exec "workflow.TaskObject['Update Regions'].Execute()")
 
 ; ── 7. Add Boundary Layers ──────────────────────────────────────────
-; Prism layer count is now driven from config (AUDIT C6 — volume_mesh.num_layers
+; Prism layer count is driven from config (AUDIT C6 — volume_mesh.num_layers
 ; was previously ignored). NumberOfLayers is a stable Watertight arg.
-; [needs-cluster] first_layer_height / y+ control needs the offset method set to
-; 'aspect-ratio' or 'uniform' (last-ratio doesn't take an absolute first height);
-; wire volume_mesh.first_layer_height once the y+ target is confirmed on ARC.
-(%py-exec "workflow.TaskObject['Add Boundary Layers'].Arguments.set_state({'LocalPrismPreferences': {'Continuous': r'Continuous'}, 'OffsetMethodType': r'last-ratio', 'NumberOfLayers': {{ mesh.volume_mesh.num_layers | default(15) }}})")
+; F9: target is wall-resolved y+ ≈ 1 (k-ω SST). When first_layer_height_mm is
+; set, FirstHeight pins the first prism cell absolutely; when unset, the SOP
+; last-ratio defaults are kept byte-for-byte (the team's proven flow).
+; [needs-cluster] verify 2025R1 honours FirstHeight with OffsetMethodType='last-ratio'.
+(%py-exec "workflow.TaskObject['Add Boundary Layers'].Arguments.set_state({'LocalPrismPreferences': {'Continuous': r'Continuous'}, 'OffsetMethodType': r'last-ratio', 'NumberOfLayers': {{ mesh.volume_mesh.num_layers | default(15) }}{% if mesh.volume_mesh.first_layer_height_mm %}, 'FirstHeight': {{ mesh.volume_mesh.first_layer_height_mm }}{% endif %}})")
 (%py-exec "workflow.TaskObject['Add Boundary Layers'].AddChildAndUpdate(DeferUpdate=False)")
 (%py-exec "workflow.TaskObject['last-ratio_1'].Execute()")
 

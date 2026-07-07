@@ -22,7 +22,8 @@ schema default). Schema: `backend/app/schemas/job.py`.
 | `surface_mesh.curvature_normal_angle` | 18.0 | |
 | `surface_mesh.growth_rate` | 1.2 | |
 | `volume_mesh.num_layers` | 15 | Prism layer count — now wired into Add Boundary Layers (was ignored). |
-| `volume_mesh.first_layer_height` | 5e-5 | [needs-cluster] not yet applied; needs y+-driven offset method. |
+| `volume_mesh.first_layer_height_mm` | `null` | Opt-in absolute first prism height (mm) for wall-resolved **y+ ≈ 1** (F9); ~0.02–0.05 mm at 15.65 m/s. `null` keeps the proven SOP last-ratio defaults. [needs-cluster] verify `FirstHeight` with last-ratio on 2025R1. |
+| `volume_mesh.first_layer_height` | 5e-5 | **Deprecated** — never reached Fluent; kept only so stored configs validate. |
 | `volume_mesh.bl_growth_rate` | 1.2 | |
 | `mesh_quality.surface_skewness_threshold` | 0.6 | Auto-improve surface mesh if exceeded. |
 | `mesh_quality.volume_orthogonal_quality_threshold` | 0.15 | Auto-improve volume mesh if exceeded. |
