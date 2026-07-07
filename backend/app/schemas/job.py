@@ -371,12 +371,16 @@ def apply_cfd_mode_defaults(mode: str, sc: "SolverConfig") -> "SolverConfig":
         sc.boundary_conditions = BoundaryConditions(**profile["boundary_conditions"])
 
     target_area = profile.get("reference_values", {}).get("area_m2")
+    target_length = profile.get("reference_values", {}).get("length_m")
     target_iters = profile.get("convergence", {}).get("max_iterations")
 
     if mode == "full_car":
-        # Override the default 1.2 m² with the full-car reference area.
+        # Override the default 1.2 m² with the full-car FULL frontal area (F1).
         if target_area is not None and sc.reference_values.area_m2 == 1.2:
             sc.reference_values.area_m2 = target_area
+        # Override the default 2.8 m with the wheelbase reference length (F1).
+        if target_length is not None and sc.reference_values.length_m == 2.8:
+            sc.reference_values.length_m = target_length
         # Bump from a component-style iteration count to the full-car value.
         if target_iters is not None and sc.convergence.max_iterations in (300, 3000):
             sc.convergence.max_iterations = target_iters

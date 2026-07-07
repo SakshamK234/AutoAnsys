@@ -74,10 +74,12 @@ profiles:
   full_car:
     description: Whole-car assembly, run half-car with a symmetry plane.
     reference_values:
-      # [needs-cluster F1] this should be the FULL frontal area (half-model forces
-      # are doubled below). 0.65 looks like a half-car value carried over from the
-      # specialist script — confirm and replace with the true full frontal area.
-      area_m2: 0.65
+      # F1 (maintainer-provided): FULL frontal area 1.0 m² — pairs with the
+      # half-model force doubling below. Replaces the 0.65 half-car placeholder
+      # carried over from the specialist script.
+      area_m2: 1.0
+      # Moment reference length = wheelbase, 60.5 in × 0.0254 = 1.5367 m.
+      length_m: 1.5367
     convergence:
       max_iterations: 750     # Kevin Full Car / specialist script
     # Half-car run with a centreline symmetry plane → double the forces (AUDIT C1).

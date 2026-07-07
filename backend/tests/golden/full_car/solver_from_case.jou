@@ -33,8 +33,8 @@
 
 ; ── Reference Values ──────────────────────────────────────────────────
 ; density is required for physical force COEFFICIENTS (AUDIT C4 — was unset).
-/report/reference-values/area 0.65
-/report/reference-values/length 2.8
+/report/reference-values/area 1.0
+/report/reference-values/length 1.5367
 /report/reference-values/velocity 15.65
 /report/reference-values/density 1.225
 

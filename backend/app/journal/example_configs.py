@@ -237,8 +237,9 @@ _FULL_CAR_SOLVER: dict = {
         "use_force_convergence": True,
     },
     "data_export": copy.deepcopy(_DATA_EXPORT),
+    # F1: FULL frontal area 1.0 m²; reference length = wheelbase (60.5 in).
     "reference_values": {
-        "area_m2": 0.65, "length_m": 2.8, "velocity_mps": 15.65, "density_kg_m3": 1.225,
+        "area_m2": 1.0, "length_m": 1.5367, "velocity_mps": 15.65, "density_kg_m3": 1.225,
     },
     "symmetry": copy.deepcopy(_SYMMETRY),
     "reporting": copy.deepcopy(_REPORTING),

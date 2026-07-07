@@ -97,10 +97,10 @@ half-domain). Hand-check: take Fluent's raw half-model `drag_force` from the
 solver transcript and confirm the AutoAnsys `/forces` value ≈ **2×** it. Same for
 lift and the derived Cd/Cl.
 
-☐ **Confirm the reference area is the FULL frontal area (F1).** With half-model
-forces doubled, `reference_values.area_m2` must be the **full** car frontal area
-(the shipped `0.65` is a flagged placeholder). Set the true value; Cd/Cl scale
-inversely with it.
+☐ **Sanity-check the reference values (F1 — resolved).** The full_car preset now
+uses the maintainer-provided **full frontal area 1.0 m²** and reference length
+**1.5367 m** (60.5 in wheelbase). Confirm these match the current car; Cd/Cl
+scale inversely with the area.
 
 ☐ If you ever run a **non-symmetric** geometry, set `symmetry.half_model=false`,
 `symmetry.force_factor=1.0`, and remove the symmetry-plane BC — the correctness

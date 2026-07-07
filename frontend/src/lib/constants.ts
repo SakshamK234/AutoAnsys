@@ -234,7 +234,8 @@ export const DEFAULT_SOLVER_CONFIG: SolverConfig = {
  *   with the Max-Squat origins, ground translating at -15.65 m/s in -x,
  *   tunnel-walls and contact-patches as slip walls, centreline symmetry plane
  *   (half-car; the backend pairs it with symmetry.force_factor = 2.0).
- *   Reference area 0.65 m² (F1 placeholder), iterations 750.
+ *   Reference: FULL frontal area 1.0 m², length = wheelbase 1.5367 m (F1).
+ *   Iterations 750.
  * - individual_part: inlet, outlet, moving ground, walls, symmetry plane.
  *   Reference area 1.2 m², iterations 300.
  *
@@ -304,8 +305,14 @@ export function applyCfdModeDefaults(mode: CfdMode, solver: SolverConfig): Solve
         symmetry_planes: [{ zone_name: 'symmetry' }],
       };
     }
+    // F1: FULL frontal area (1.0 m²) — half-model forces are doubled in post,
+    // so the area must be the whole car's. Reference length = wheelbase
+    // (60.5 in = 1.5367 m). Matches the backend preset (profiles.yaml).
     if (next.reference_values.area_m2 === 1.2) {
-      next.reference_values.area_m2 = 0.65;
+      next.reference_values.area_m2 = 1.0;
+    }
+    if (next.reference_values.length_m === 2.8) {
+      next.reference_values.length_m = 1.5367;
     }
     if (next.convergence.max_iterations === 300 || next.convergence.max_iterations === 3000) {
       next.convergence.max_iterations = 750;

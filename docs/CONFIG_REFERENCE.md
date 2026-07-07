@@ -39,8 +39,8 @@ schema default). Schema: `backend/app/schemas/job.py`.
 |---|---|---|
 | `turbulence.model` | `k-omega-sst` | Also `k-epsilon-realizable`, `spalart-allmaras`. |
 | `turbulence.curvature_correction` | true | k-ω SST curvature correction. |
-| `reference_values.area_m2` | 1.2 (full_car → 0.65, **F1 placeholder**) | **Full** frontal area for a half-model. |
-| `reference_values.length_m` | 2.8 | Moment reference length. |
+| `reference_values.area_m2` | 1.2 (full_car → **1.0**, maintainer-provided F1) | **Full** frontal area for a half-model. |
+| `reference_values.length_m` | 2.8 (full_car → **1.5367** = 60.5 in wheelbase) | Moment reference length. |
 | `reference_values.velocity_mps` | 15.65 | Freestream. |
 | `reference_values.density_kg_m3` | 1.225 | Sea-level air. [needs-cluster] |
 | `symmetry.half_model` | false (profiles → true) | Half-domain run. |

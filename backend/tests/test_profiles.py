@@ -26,11 +26,11 @@ def test_defaults_are_merged_in():
         resolved = resolve_profile(mode)
         assert resolved["turbulence"]["model"] == "k-omega-sst"
         assert resolved["turbulence"]["curvature_correction"] is True
-        # `velocity_mps`/`length_m` come from defaults.reference_values and merge
-        # with the profile's own `area_m2`.
+        # `velocity_mps` comes from defaults.reference_values and merges with the
+        # profile's own `area_m2`/`length_m` overrides.
         assert resolved["reference_values"]["velocity_mps"] == 15.65
-        assert resolved["reference_values"]["length_m"] == 2.8
         assert "area_m2" in resolved["reference_values"]
+        assert "length_m" in resolved["reference_values"]
 
 
 def test_individual_part_preset_values():
@@ -51,7 +51,10 @@ def test_individual_part_preset_values():
 
 def test_full_car_preset_values():
     p = resolve_profile("full_car")
-    assert p["reference_values"]["area_m2"] == 0.65
+    # F1 (maintainer-provided): FULL frontal area 1.0 m²; length = wheelbase
+    # 60.5 in = 1.5367 m. Pairs with the half-model force doubling.
+    assert p["reference_values"]["area_m2"] == 1.0
+    assert p["reference_values"]["length_m"] == 1.5367
     assert p["convergence"]["max_iterations"] == 750
     bc = p["boundary_conditions"]
     wheels = {w["zone_name"]: w for w in bc["rotating_walls"]}

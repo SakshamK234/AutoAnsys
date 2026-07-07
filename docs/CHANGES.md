@@ -48,7 +48,7 @@ A `--validate` dry-run renders every artifact for both profiles without Fluent.
 
 | Item | Decision | Effect |
 |---|---|---|
-| F1 full-car ref area | Keep `0.65` placeholder | Still flagged; replace with measured full frontal area before trusting full-car Cd/Cl |
+| F1 full-car ref area | **Resolved**: full frontal area **1.0 m²**, length = wheelbase **60.5 in = 1.5367 m** | full_car preset + fixtures + frontend mirror updated; Cd/Cl now use the real normalization |
 | F3 body wall pattern | Keep `wall-body*` guess | Confirm against a real mesh zone list |
 | F9 y+ target | Wall-resolved y+ ≈ 1 | `volume_mesh.first_layer_height_mm` (opt-in) emits `FirstHeight`; unset keeps proven SOP prism defaults |
 | F4 full-car outlet | **Fix** | `pressure_outlets: outlet` added to the full_car preset (yaml + fixtures + frontend mirror) |
