@@ -82,7 +82,9 @@ Tracked upgrades for the AutoAnsys CFD Platform, organized by impact level.
 ### 9. Result Post-Processing
 - [ ] Compute derived quantities: Cl/Cd ratio, drag breakdown by component
 - [ ] Aero balance percentage (front/rear)
-- [ ] Reference area and coefficient normalization settings
+- [x] Reference area and coefficient normalization settings — done in the CFD
+      rework (M2): `reference_values` (incl. density) + `app/post/forces.py`
+      derive Cd/Cl/Cm from body-scoped forces, with the half-model symmetry factor
 - [ ] Export summary CSV with key metrics across multiple jobs
 
 ### 10. Multi-Geometry Assemblies
@@ -107,7 +109,8 @@ Tracked upgrades for the AutoAnsys CFD Platform, organized by impact level.
 
 ### 13. Retry Logic
 - [ ] Implement actual Celery retry with exponential backoff
-- [ ] Retry on transient SSH/SFTP failures
+- [x] Retry on transient SSH/SFTP failures — submit tasks retry on
+      socket timeouts / SSHException (`_TRANSIENT_CLUSTER_ERRORS`)
 - [ ] Dead letter queue for permanently failed tasks
 
 ### 14. Centralized Logging
@@ -117,6 +120,9 @@ Tracked upgrades for the AutoAnsys CFD Platform, organized by impact level.
 
 ### 15. Input Validation Hardening
 - [ ] Validate mesh/solver configs against Fluent-supported ranges
+- [x] Physics-consistency checks — `check_solver_correctness()` flags symmetry/
+      force-factor mismatches, missing ground/wheels for full_car, unset
+      reference values (logged at job creation)
 - [ ] Pre-flight checks before submission (geometry file exists in S3, cluster reachable)
 - [ ] Config schema versioning for forward compatibility
 

@@ -204,7 +204,7 @@ export const DEFAULT_SOLVER_CONFIG: SolverConfig = {
   },
   convergence: {
     residual_target: 1e-4,
-    // SOP Individual Part = 300; Full Car mode bumps this to 3000.
+    // SOP Individual Part = 300; Full Car mode bumps this to 750.
     max_iterations: 300,
     force_monitor_window: 100,
     force_monitor_tolerance: 0.001,
@@ -219,6 +219,8 @@ export const DEFAULT_SOLVER_CONFIG: SolverConfig = {
     area_m2: 1.2,
     length_m: 2.8,
     velocity_mps: 15.65,
+    // Sea-level air — required for physical force coefficients.
+    density_kg_m3: 1.225,
   },
   // "hybrid" → /solve/init/hyb-init (matches specialist script).
   // "hybrid-absolute" → set absolute reference frame, then hyb-initialize.
@@ -230,10 +232,15 @@ export const DEFAULT_SOLVER_CONFIG: SolverConfig = {
  *
  * - full_car: BCs = inlet (15.65, 5%/10), front-tire & rear-tire @ 77 rad/s
  *   with the Max-Squat origins, ground translating at -15.65 m/s in -x,
- *   tunnel-walls and contact-patches as slip walls.
- *   Reference area 0.65 m², iterations 750.
+ *   tunnel-walls and contact-patches as slip walls, centreline symmetry plane
+ *   (half-car; the backend pairs it with symmetry.force_factor = 2.0).
+ *   Reference area 0.65 m² (F1 placeholder), iterations 750.
  * - individual_part: inlet, outlet, moving ground, walls, symmetry plane.
  *   Reference area 1.2 m², iterations 300.
+ *
+ * NOTE: the backend serves these presets at GET /api/profiles/{mode} from its
+ * single source of truth (profiles.yaml). Prefer that endpoint over extending
+ * this mirror — it has drifted before.
  *
  * Only fills BCs when all lists are empty, so once the wizard has populated
  * them, switching modes does not clobber user edits.
@@ -290,7 +297,9 @@ export function applyCfdModeDefaults(mode: CfdMode, solver: SolverConfig): Solve
           { zone_name: 'contact-patches' },
         ],
         stationary_walls: [],
-        symmetry_planes: [],
+        // Half-car centreline symmetry plane — must match the backend preset
+        // (profiles.yaml), which pairs it with symmetry.force_factor = 2.0.
+        symmetry_planes: [{ zone_name: 'symmetry' }],
       };
     }
     if (next.reference_values.area_m2 === 1.2) {

@@ -44,10 +44,27 @@ A `--validate` dry-run renders every artifact for both profiles without Fluent.
 - Full-car **reference area (F1)**, **body wall pattern (F3)**, air **density**.
 - Confirm multi-node MPI spans nodes and HPC-Pack licensing (S1/S2).
 
+## Completed follow-ups (post-M7)
+
+- **Per-profile defaults endpoint:** `GET /api/profiles` + `GET /api/profiles/{mode}`
+  serve the resolved presets from `profiles.yaml`, so the frontend can stop
+  hand-mirroring them. *(Docker-only verification — needs the full app stack.)*
+- **Frontend mirror re-synced:** the wizard's `applyCfdModeDefaults` full_car
+  preset was stale vs M2 — it lacked the centreline **symmetry plane**, so a
+  wizard-created full-car job would have carried the ×2 force factor without the
+  plane (the exact inconsistency the correctness guard warns about). Fixed; TS
+  types now include `symmetry`/`reporting`/`density_kg_m3`/`use_force_convergence`/
+  `mpi`/`interconnect`/`workflow` and the force-N fields on `ForceReport`.
+  *(Type-check `npx tsc --noEmit` must run in Docker/CI — Node is not available
+  in the environment used for this work.)*
+- **GIT_SHA wiring:** `backend/Dockerfile` (ARG/ENV) + `docker-compose.yml`
+  (build arg + runtime env for backend/worker) + `.env.example`, so
+  `run_metadata.json` records a real SHA instead of "unknown".
+
 ## Deferred (noted, not done)
 
 - **E1** OOD "session" mode references a non-existent module — left unreachable/
   harmless; keep-or-remove is a product decision.
 - **E7** structured logging / request-id tracing.
-- Frontend: surface the new force-N fields and per-profile defaults endpoint
-  (backend is the single source of truth; frontend still has local constants).
+- Frontend consumption of `GET /api/profiles` (the endpoint exists; the wizard
+  still uses its local mirror — wiring it up needs a runnable frontend to verify).

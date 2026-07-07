@@ -147,6 +147,10 @@ export interface MeshConfig {
   enclosure: EnclosureConfig | null;
   mesh_quality: MeshQuality;
   geometry_unit: string;
+  /** 'watertight' (clean parts) | 'fault-tolerant' (dirty full-car wrap). Backend seeds per profile. */
+  workflow?: 'watertight' | 'fault-tolerant';
+  /** Build the enclosure from the part bounding box instead of expecting a pre-built one. */
+  build_enclosure?: boolean;
   // Face labels applied in Discovery to the Parasolid export.
   // Passed to Fluent as OriginalZones so they survive meshing.
   original_zones: string[];
@@ -240,6 +244,8 @@ export interface ConvergenceConfig {
   max_iterations: number;
   force_monitor_window: number;
   force_monitor_tolerance: number;
+  /** Stop early once the drag-force report plateaus (backend default: true). */
+  use_force_convergence?: boolean;
 }
 
 export interface DataExportConfig {
@@ -250,9 +256,31 @@ export interface DataExportConfig {
 }
 
 export interface ReferenceValues {
+  /** FULL frontal area for half-model runs (forces are doubled in post). */
   area_m2: number;
   length_m: number;
   velocity_mps: number;
+  /** Air density — required for physical coefficients (backend default 1.225). */
+  density_kg_m3?: number;
+}
+
+/**
+ * Half-model symmetry handling. When a centreline symmetry plane halves the
+ * body, reported forces/coefficients are multiplied by force_factor (2.0).
+ */
+export interface SymmetryConfig {
+  half_model: boolean;
+  force_factor: number;
+}
+
+/** Force/moment report scope — body walls only, not ground/tunnel. */
+export interface ReportingConfig {
+  body_wall_pattern: string;
+  emit_forces_newtons: boolean;
+  emit_coefficients: boolean;
+  moment_center_x: number;
+  moment_center_y: number;
+  moment_center_z: number;
 }
 
 export type InitializationMode = 'hybrid' | 'hybrid-absolute';
@@ -265,6 +293,9 @@ export interface SolverConfig {
   convergence: ConvergenceConfig;
   data_export: DataExportConfig;
   reference_values: ReferenceValues;
+  /** Optional — backend seeds per-profile defaults when omitted. */
+  symmetry?: SymmetryConfig;
+  reporting?: ReportingConfig;
   initialization: InitializationMode;
 }
 
@@ -280,6 +311,10 @@ export interface SlurmConfig {
   partition: string;
   account: string;
   job_name: string;
+  /** Fluent MPI flavour (backend default: 'intel'). */
+  mpi?: string;
+  /** 'infiniband' → -pib, 'ethernet' → -peth (backend default: 'infiniband'). */
+  interconnect?: string;
 }
 
 // ── Job types ────────────────────────────────────────────────────────────────
@@ -406,9 +441,14 @@ export interface ResidualData {
 
 export interface ForceReport {
   iteration: number;
+  // Coefficients (derived in backend post from forces + reference values).
   cd: number;
   cl: number;
   cm: number;
+  // Symmetry-corrected forces in N / N·m (absent for legacy pre-M2 jobs).
+  drag_n?: number;
+  lift_n?: number;
+  moment_nm?: number;
 }
 
 // ── Cluster ──────────────────────────────────────────────────────────────────

@@ -197,6 +197,12 @@ Base URL: `http://localhost:8000/api`
 | PUT | `/templates/{id}` | Update a template |
 | DELETE | `/templates/{id}` | Delete a template |
 
+### Run profiles
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/profiles` | List available run-profile names |
+| GET | `/profiles/{mode}` | Resolved preset + default mesh/solver/SLURM configs for a mode |
+
 ---
 
 ## Security (public or shared deployments)
