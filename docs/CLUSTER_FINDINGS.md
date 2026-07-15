@@ -68,6 +68,11 @@ the job IDs that produced them. Raw outputs live in
     surfaces later when `Describe Geometry and Flow`.Execute rejects.
   - `FlowType: 'External flow around the object'` is the **verbatim accepted
     enum** for external aero (probe 6371893).
+- **`ModelingObjective: 'Virtual Wind Tunnel'` is the key that unlocks the FT
+  workflow for external aero** (probe 6372294): with it set,
+  `Describe Geometry and Flow`.Execute() returns True on the bare wing. 2025R1
+  ships a purpose-built VWT objective — exactly the AutoAnsys use case; probe10
+  (6372329) chains it toward a full pipeline-built wing mesh.
 - `%py-exec` mechanics: the Scheme reader converts `\n` escapes to REAL newlines
   before Python compiles — multi-line Python source works directly, but a `\n`
   inside a Python string literal splits it ("unterminated string literal",
