@@ -85,13 +85,13 @@
 switch-to-solution-mode
 yes
 
-(%py-exec "print('=== MESH ZONE LIST ===')")
+(display "=== MESH ZONE LIST ===")(newline)
 /define/boundary-conditions/list-zones
 
 /file/write-case "/scratch/<user>/autoansys/jobs/<full_car_job>/mesh.cas.h5"
 
-(%py-exec "print('=== MESH_CELL_COUNT_BEGIN ===')")
+(display "=== MESH_CELL_COUNT_BEGIN ===")(newline)
 /mesh/size-info
-(%py-exec "print('=== MESH_CELL_COUNT_END ===')")
+(display "=== MESH_CELL_COUNT_END ===")(newline)
 
 /exit yes

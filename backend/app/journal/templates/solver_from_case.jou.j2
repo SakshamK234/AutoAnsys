@@ -13,7 +13,9 @@
 /file/read-case "{{ case_file }}"
 
 ; ── Print zone list for debugging ────────────────────────────────────
-(%py-exec "print('=== ZONE LIST ===')")
+; Scheme, not %py-exec: this journal runs in a pure solver launch (no -meshing)
+; where the meshing Python API is not available.
+(display "=== ZONE LIST ===")(newline)
 /define/boundary-conditions/list-zones
 
 ; ── Safety net: enclosure cell zone must be fluid ───────────────────

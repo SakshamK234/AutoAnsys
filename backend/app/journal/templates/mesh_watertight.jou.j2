@@ -113,7 +113,7 @@ yes
 ; ── Print zone list for debugging ─────────────────────────────────────
 ; Zones come from Discovery-applied face labels on the Parasolid export.
 ; Expected: inlet, outlet, ground, symmetry, walls (+ aero components for full car).
-(%py-exec "print('=== ZONE LIST ===')")
+(display "=== ZONE LIST ===")(newline)
 /define/boundary-conditions/list-zones
 
 ; ── Safety net: force enclosure cell zone to fluid ────────────────────

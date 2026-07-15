@@ -98,7 +98,7 @@ yes
 ; ── Print zone list for debugging ─────────────────────────────────────
 ; Zones come from Discovery-applied face labels on the Parasolid export.
 ; Expected: inlet, outlet, ground, symmetry, walls (+ aero components for full car).
-(%py-exec "print('=== ZONE LIST ===')")
+(display "=== ZONE LIST ===")(newline)
 /define/boundary-conditions/list-zones
 
 ; ── Safety net: force enclosure cell zone to fluid ────────────────────
@@ -235,7 +235,12 @@ yes
 /display/set/picture/color-mode color
 
 ; ── Mid-plane cross-section (Z=0) for flow-field views ────────────────
-(%py-exec "solver.results.surfaces.iso_surface['midplane-z'] = {'field': 'z-coordinate', 'iso_values': [0.0]}")
+; TUI, not %py-exec: the ARC diagnostic (solver-4917231.out, 2026-03-31) shows
+; NO `solver` Python global exists after switch-to-solution-mode, so the old
+; `solver.results.surfaces.iso_surface[...]` line always raised NameError and
+; the midplane surface was never created.
+; [needs-cluster] verify the iso-surface TUI arg order on the first real run.
+/surface/iso-surface z-coordinate midplane-z () () 0 ()
 
 /display/set/contours/filled? yes
 /display/set/contours/node-values? yes
