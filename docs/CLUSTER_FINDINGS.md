@@ -55,7 +55,26 @@ the job IDs that produced them. Raw outputs live in
 - Import is **not** a plain FileName arg: `PMFileManagement.FileManager.LoadFiles`
   takes **no arguments** (kwargs crash: "S_LoadFiles: CAR: invalid argument");
   files must first be registered via `PartManagement.InputFileChanged(FilePath=…,
-  IgnoreSolidNames=…, PartPerBody=…)` (probe4 verifying the exact sequence).
+  IgnoreSolidNames=…, PartPerBody=…)`.
+- Import sequence facts (probes 6371861/6371893/6371919/6372085):
+  - `InputFileChanged → LoadFiles()` auto-populates the Import task args
+    (`FMDFileName`, `Route: 'Parasolid'`) and converts the CAD to an `.fmd`.
+  - The loaded file appears in `PMFileManagement` as `File:File-1`
+    (`Name: 'RW_1.5_Geom.x_t'`, `Keys: [2]`) — PyFluent-style copy paths use the
+    `"/name,key"` suffix form.
+  - `Node['Meshing Model'].Copy(Paths=[…])` with a wrong path **silently
+    no-ops** (no exception, no node added).
+  - `Import…Execute()` "succeeds" even with nothing copied in; the failure only
+    surfaces later when `Describe Geometry and Flow`.Execute rejects.
+  - `FlowType: 'External flow around the object'` is the **verbatim accepted
+    enum** for external aero (probe 6371893).
+- `%py-exec` mechanics: the Scheme reader converts `\n` escapes to REAL newlines
+  before Python compiles — multi-line Python source works directly, but a `\n`
+  inside a Python string literal splits it ("unterminated string literal",
+  probe 6372085). Guard helpers must be defined as direct multi-line defs.
+- A failed task `Execute()` raises `S_ExecuteTask` and can abort the journal →
+  idle-at-prompt hang (see finding 2). Production journals should keep task
+  sequences pre-validated; probes wrap risky calls in try/except.
 
 ## Test articles
 
