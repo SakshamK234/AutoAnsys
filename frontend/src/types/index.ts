@@ -92,6 +92,32 @@ export interface LocalSizingRegion {
   z_min?: number;
   z_max?: number;
   face_zones: string[];
+  /** Fluent sizing-control extras (specialist full-car recipe); emitted only when set. */
+  cells_per_gap?: number | null;
+  curvature_normal_angle?: number | null;
+}
+
+/**
+ * Watertight 'Create Local Refinement Regions' box (specialist full-car
+ * recipe). labels set → box sized ratio-relative to those face labels'
+ * bounding box (tire wakes); labels empty → absolute coordinates box.
+ */
+export interface RefinementRegionBox {
+  name: string;
+  max_size: number;
+  labels: string[];
+  x_min_ratio?: number;
+  x_max_ratio?: number;
+  y_min_ratio?: number;
+  y_max_ratio?: number;
+  z_min_ratio?: number;
+  z_max_ratio?: number;
+  x_min?: number | null;
+  x_max?: number | null;
+  y_min?: number | null;
+  y_max?: number | null;
+  z_min?: number | null;
+  z_max?: number | null;
 }
 
 export interface SurfaceMeshConfig {
@@ -113,6 +139,11 @@ export interface VolumeMeshConfig {
   first_layer_height: number;
   num_layers: number;
   bl_growth_rate: number;
+  /** Grow prisms only on these face labels (specialist full-car recipe). Empty → default wall scope. */
+  prism_labels?: string[];
+  /** 'default' keeps the wing-validated Watertight fill; 'poly-hexcore' = specialist full-car recipe. */
+  fill?: 'default' | 'poly-hexcore';
+  hex_max_cell_length?: number | null;
 }
 
 export interface WindTunnelConfig {
@@ -143,23 +174,39 @@ export interface MeshQuality {
   surface_skewness_threshold: number;
   volume_orthogonal_quality_threshold: number;
   auto_improve: boolean;
+  /** Improve Volume Mesh insertion — off in the specialist full-car recipe. */
+  improve_volume?: boolean;
+  /** Improve Surface Mesh SQMinSize; null → surface min_size (full car: 0.25). */
+  sq_min_size?: number | null;
 }
 
 export interface MeshConfig {
   local_sizing: LocalSizingRegion[];
+  /** Watertight wake/nearfield refinement boxes (specialist full-car recipe). */
+  refinement_regions?: RefinementRegionBox[];
   surface_mesh: SurfaceMeshConfig;
   volume_mesh: VolumeMeshConfig;
   wind_tunnel: WindTunnelConfig;
   enclosure: EnclosureConfig | null;
   mesh_quality: MeshQuality;
   geometry_unit: string;
-  /** 'watertight' (clean parts) | 'fault-tolerant' (dirty full-car wrap). Backend seeds per profile. */
+  /**
+   * Both profiles default to 'watertight' (wing SOP path / specialist
+   * full-car recipe); 'fault-tolerant' (wrap) stays available by explicit
+   * override for unlabelled dirty assemblies.
+   */
   workflow?: 'watertight' | 'fault-tolerant';
   /** Build the enclosure from the part bounding box instead of expecting a pre-built one. */
   build_enclosure?: boolean;
   // Face labels applied in Discovery to the Parasolid export.
   // Passed to Fluent as OriginalZones so they survive meshing.
-  original_zones: string[];
+  // null (specialist full-car path) omits OriginalZones entirely.
+  original_zones: string[] | null;
+  /** 'fluid-only' = CAD models the tunnel-minus-car fluid volume (specialist full car). */
+  describe_setup_type?: 'default' | 'fluid-only';
+  wall_to_internal?: boolean;
+  /** false = leave Import task defaults (specialist full car); true = pin wing-validated options. */
+  pin_cad_import_options?: boolean;
 }
 
 // ── Solver Config (mirrors backend schemas/job.py) ───────────────────────────
