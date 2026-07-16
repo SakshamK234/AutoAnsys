@@ -18,11 +18,12 @@
 (display "=== ZONE LIST ===")(newline)
 /define/boundary-conditions/list-zones
 
-; ── Safety net: SOP-path enclosure cell zone must be fluid ──────────
-; ti-menu-load-string is error-resilient: on VWT meshes (fluid zone is
-; `tunnel-fluid`, no `enclosure` zone) this logs an error and continues,
-; whereas the bare TUI line would abort the journal (probe 6380260 class).
-(ti-menu-load-string "/define/boundary-conditions/zone-type enclosure fluid")
+; NOTE: no `zone-type enclosure fluid` safety net here. Both mesh workflows
+; deliver a correct fluid cell zone in mesh.cas.h5 (VWT: `tunnel-fluid`), and on
+; meshes without an `enclosure` zone the line aborts the journal even when
+; wrapped in ti-menu-load-string (probe 6380500: "Invalid zone" then a scheme
+; CAR error from the leftover args). The legacy combined template keeps it —
+; the SOP path guarantees that zone exists there.
 
 ; ── Reference values, turbulence model, all BCs (shared partial) ─────
 ; ════════════════════════════════════════════════════════════════════════
