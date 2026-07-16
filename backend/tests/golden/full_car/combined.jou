@@ -238,7 +238,8 @@ yes
 ; PHASE 4: POST-PROCESSING — Contour Images (shared partial)
 ; ══════════════════════════════════════════════════════════════════════
 ; ════════════════════════════════════════════════════════════════════════
-; SHARED CONTOUR / POST-PROCESSING BLOCK — 2025R1-validated (probe 6388066).
+; SHARED CONTOUR / POST-PROCESSING BLOCK — 2025R1-validated (probe 6388066;
+; views validated probes 6388814/6389014, imagery confirmed job 6388594).
 ;
 ; Idiom notes (all verified live on ARC):
 ; • Requires the solver stage to launch with `-gu -driver null` — with `-g`
@@ -248,6 +249,12 @@ yes
 ;   current menu, so bare paths desync after any menu-entering command.
 ; • Contours are display OBJECTS (`display objects create contour ...`) — the
 ;   legacy /display/set/contours/* menu no longer exists.
+; • View commands only affect an EXISTING graphics window, and the headless
+;   window is created lazily by the first `display` — so the order per image
+;   must be: display (bootstrap) → camera → display again (redraw) →
+;   auto-scale (fit content, keeps direction) → save-picture. A views command
+;   issued before any display, or a save without re-display, yields an empty
+;   canvas (probes 6388814/6389014).
 ; ════════════════════════════════════════════════════════════════════════
 
 
@@ -257,25 +264,48 @@ yes
 
 ; Mid-SPAN cross-section for flow-field views (validated arg order). In the
 ; team's CAD convention z is UP (ground at z=0, probe 6380144 extents) — the
-; side-view slice is y=0. [needs-cluster] verify imagery on the next run.
+; side-view slice is y=0 (imagery confirmed on job 6388594).
 (ti-menu-load-string "surface iso-surface y-coordinate midplane-y () () 0 ()")
 
+; Slice images look SIDEWAYS at the y=0 plane: camera on -y looking along +y,
+; z up ⇒ x right / z up, true side elevation. auto-scale frames the content.
 (ti-menu-load-string "display objects create contour cont-velocity field velocity-magnitude surfaces-list midplane-y () quit")
 (ti-menu-load-string "display objects display cont-velocity")
+(ti-menu-load-string "views camera target 0 0 0")
+(ti-menu-load-string "views camera position 0 -5 0")
+(ti-menu-load-string "views camera up-vector 0 0 1")
+(ti-menu-load-string "display objects display cont-velocity")
+(ti-menu-load-string "views auto-scale")
 (ti-menu-load-string "display save-picture \"/scratch/<user>/autoansys/jobs/<full_car_job>/contour_velocity_midplane.png\"")
 
 (ti-menu-load-string "display objects create contour cont-pressure field pressure surfaces-list midplane-y () quit")
 (ti-menu-load-string "display objects display cont-pressure")
+(ti-menu-load-string "views camera target 0 0 0")
+(ti-menu-load-string "views camera position 0 -5 0")
+(ti-menu-load-string "views camera up-vector 0 0 1")
+(ti-menu-load-string "display objects display cont-pressure")
+(ti-menu-load-string "views auto-scale")
 (ti-menu-load-string "display save-picture \"/scratch/<user>/autoansys/jobs/<full_car_job>/contour_pressure_midplane.png\"")
 
 (ti-menu-load-string "display objects create contour cont-tke field turb-kinetic-energy surfaces-list midplane-y () quit")
 (ti-menu-load-string "display objects display cont-tke")
+(ti-menu-load-string "views camera target 0 0 0")
+(ti-menu-load-string "views camera position 0 -5 0")
+(ti-menu-load-string "views camera up-vector 0 0 1")
+(ti-menu-load-string "display objects display cont-tke")
+(ti-menu-load-string "views auto-scale")
 (ti-menu-load-string "display save-picture \"/scratch/<user>/autoansys/jobs/<full_car_job>/contour_tke_midplane.png\"")
 
-; Pressure coefficient on the body walls. [needs-cluster] wildcard patterns in
-; surfaces-list are unverified — works with a concrete merged body zone name.
+; Pressure coefficient on the body walls — 3D surface, so an isometric camera
+; (a side view would show the body edge-on). Explicit camera because the
+; window still holds the sideways view from the slice images above.
 (ti-menu-load-string "display objects create contour cont-cp field pressure-coefficient surfaces-list wall-body* () quit")
 (ti-menu-load-string "display objects display cont-cp")
+(ti-menu-load-string "views camera target 0 0 0")
+(ti-menu-load-string "views camera position 5 -5 5")
+(ti-menu-load-string "views camera up-vector 0 0 1")
+(ti-menu-load-string "display objects display cont-cp")
+(ti-menu-load-string "views auto-scale")
 (ti-menu-load-string "display save-picture \"/scratch/<user>/autoansys/jobs/<full_car_job>/contour_cp.png\"")
 
 ; ── Done ──────────────────────────────────────────────────────────────

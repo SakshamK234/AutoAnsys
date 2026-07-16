@@ -151,8 +151,9 @@ Solver-journal 2025R1 TUI facts (probes 6380260–6388066), all in templates:
 Full-car recon (fc1, job 6388074): the V0.1 STEP imports clean with NAMED
 per-component objects — `bounding_box`, `wheels.1–4`, `chassis.1–6`,
 `cfd-wing-front.1/2`, `undertray`, `suspension*` — so the car reuses the wing
-recipe with name-based wheel BCs and per-component merges. **Full-car meshing
-is HELD pending maintainer go-ahead.**
+recipe with name-based wheel BCs and per-component merges. *Superseded:*
+maintainer go-ahead came with a specialist-validated V0.4 geometry and
+watertight journal — see "Full-car path" section below.
 
 ## Sizing + resources for the FT/VWT mesh (probes 6377252–6378056)
 
@@ -218,3 +219,70 @@ More %py-exec ground rules learned:
   wrong FlowType (`Internal` → external), wrong import sequence, missing
   `Create External Flow Boundaries`. Tracked in task "Cluster validation —
   component path".
+
+## ✅ ACCEPTANCE-2 — half-model corrected (job 6388594, 2026-07-16)
+
+The wing geometry is a HALF rear wing cut at y=0 (domain extents
+y ∈ [−1.5013, +0.00007], probes 6389014/6388594). Acceptance re-ran with the
+symmetry BC on the y≈0 face and `force_factor: 2.0`:
+**Fluent exit 0 → JOB_COMPLETE in 1 m 34 s**, all artifacts written.
+Official full-wing numbers at 15 m/s (×2, production parser):
+**downforce 327.6 N, drag 128.1 N**, moment −0.66 N·m; Cd 1.96 / Cl −5.00
+(ref. area 0.475 m²). Convergence plateau: last-50-iteration σ = 0.002 N
+(drag) / 0.007 N (lift). The profile's `half_model: true, force_factor: 2.0`
+defaults were correct all along.
+
+## Contour views — sideways slice imagery (probes 6388814/6389014 + job 6388594)
+
+The y=0 mid-span slice renders full flow-field content on the production
+watertight mesh (job 6388594 PNGs). Getting a face-on ("sideways") view needs
+a strict command order because of two headless-graphics gotchas:
+
+1. **The graphics window is created lazily by the first `display`.** Any
+   `views …` command issued before it silently no-ops (returns `#t`, changes
+   nothing) — probe 6389014's first-command `restore-view bottom` left the
+   default view; probe 6388814's same command after a display applied.
+2. **A view/camera change does not redraw the scene.** Saving without a
+   re-display captures an empty canvas (probes 6388621/6388683).
+
+Validated per-image sequence (now in `_contours_block.jou.j2`):
+`display objects display <obj>` (bootstrap window) → `views camera
+target/position/up-vector …` → `display objects display <obj>` (redraw) →
+`views auto-scale` (frames content, keeps direction) → `display save-picture`.
+Slice images use camera on −y looking along +y with up (0,0,1) (x right,
+z up — true side elevation); the body-cp image resets an isometric camera
+because window state persists between images.
+
+Named views are untrustworthy here: `restore-view front/back/right` are
+edge-on for a y-normal slice, and `top` never applied even mid-session.
+Explicit `views camera` + `auto-scale` is deterministic and geometry-agnostic.
+
+## Full-car path — V0.4-stepFC + specialist watertight journal (2026-07-16)
+
+Maintainer delivered `geometries/V0.4-stepFC` (STEP, extension stripped —
+uploaded to ARC as `.stp`) validated by a CFD specialist, plus the
+specialist's GUI-recorded meshing journal (`meshjournal.jou`). Analysis:
+
+- **Watertight workflow, fluid-only CAD**: `Describe Geometry` declares
+  "only fluid regions with no voids" + `WallToInternal: Yes` — the STEP
+  models the tunnel-minus-car fluid volume directly. No enclosure/wrap step.
+- **Half car**: prism labels list only left wheels (`front-left-wheel`,
+  `rear-left-wheel`) → symmetry plane + force ×2, like the wing.
+- Units mm. Named face labels: chassis, front/rear-wing, whisker,
+  trailing-edges, undertray, suspension, wheels.
+- New workflow pieces to codify: `CreateLocalRefinementRegions` (tire-wake
+  boxes ratio-relative to wheel labels + absolute nearfield box), face
+  sizings with CellsPerGap/CurvatureNormalAngle (TE at 0.25 mm!), boundary
+  layers `last-ratio` ×6 grown on selected labels only, `poly-hexcore` fill
+  with `HexMaxCellLength: 32`.
+- **Batch fixes required** (GUI recording): no workflow init, no import
+  FileName (was set in a GUI dialog), `cx-gui-do` transcript/Switch-to-
+  Solution calls → replaced with `InitializeWorkflow`, explicit
+  `Arguments.set_state({FileName, LengthUnit})`, and TUI
+  `switch-to-solution-mode yes`.
+- The recorded `set_state` calls are **deltas** (GUI records only changed
+  fields; task-argument state persists between `AddChildAndUpdate` calls) —
+  replay must keep the exact order.
+
+fc3 (job 6391613) replays the adapted journal end-to-end and writes
+`fc_v04_mesh.cas.h5` + zone list for solver BC wiring.
