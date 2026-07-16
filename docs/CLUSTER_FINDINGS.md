@@ -81,12 +81,47 @@ the job IDs that produced them. Raw outputs live in
   idle-at-prompt hang (see finding 2). Production journals should keep task
   sequences pre-validated; probes wrap risky calls in try/except.
 
-## Test articles
+## Test articles (assessment CORRECTED by probe 6375236)
 
 | File | Contents | Pipeline path |
 |---|---|---|
-| `geometries/RW_1.5_Geom.x_t` | Bare wing solid — no labels, no enclosure, no Parasolid attributes | FT + Create External Flow Boundaries (pipeline builds domain) |
-| `geometries/V0.1_STEP.stp` | 12-product / 40-solid full-car assembly **including a `Bounding Box` body** (Kevin's April 2026 enclosure export) — but **no face labels** | FT; boundary types must be assigned geometrically or via re-export with labels (open question for aero lead) |
+| `geometries/RW_1.5_Geom.x_t` | **TWO bodies: `enclosure` + `geom`** (wing). No face labels/attributes, but the enclosure box IS in the file — Fluent objects after import: `['enclosure', 'geom']`. The earlier "bare part" read (grep for labels) missed the unnamed-body enclosure. | FT/VWT + CEFB **"Use existing boundary"** on `enclosure` |
+| `geometries/V0.1_STEP.stp` | 12-product / 40-solid full-car assembly **including a `Bounding Box` body** (Kevin's April 2026 enclosure export) — no face labels | Same "Use existing boundary" pattern; boundary typing via VWT/Update Boundaries (validating) |
+
+## The proven VWT chain (probes 6372187 → 6376546)
+
+Working batch sequence on the real wing (first pipeline-built mesh:
+`wing_probe18.cas.h5`, job 6375946):
+
+1. `InitializeWorkflow('Fault-tolerant Meshing')`
+2. `PartManagement.InputFileChanged(FilePath=…, IgnoreSolidNames=False, PartPerBody=False)`
+3. `PMFileManagement.FileManager.LoadFiles()`  *(no args)*
+4. `Import CAD and Part Management`.Execute()
+5. DGF `set_state({'ModelingObjective': 'Virtual Wind Tunnel'})` → Execute
+6. CEFB `set_state({'CreationMethod': 'Use existing boundary', 'SelectionType': 'object', 'ObjectSelectionSingle': ['enclosure'], 'ExtractionMethod': 'surface mesh'})` → Execute
+7. Update Region Settings → Choose Mesh Control Options → Generate the Surface
+   Mesh → (Compute Regions → Update Boundaries) → Generate Boundary Layers →
+   Generate the Volume Mesh → switch → write-case
+
+**Authoritative schema source:** `cortex/resources/Meshing.fdl` (copied to local
+scratchpad) + the bundled PyFluent stubs
+(`…/site-packages/ansys/fluent/core/generated/datamodel_251/*.py`). CEFB's real
+`CreationMethod` enums are **"Create new boundary" / "Use existing boundary"**
+(my 'Bounding Box' guess = the opaque "invalid argument" errors). Default
+tunnel name: `"tunnel"`. `IdentifyRegions.MptMethodType` enums:
+"Numerical Inputs" / "Centroid of Objects" / "Offset Method".
+
+Open at probe20: probes 18/19 meshed only the wing **solid** (region table =
+`['geom']/solid`; no fluid region) — 12,785 cells, and the unlabeled wing faces
+arrive as per-face `zone0:NNN` wall zones. Probe20 adds `Identify Regions`
+(fluid material point at the enclosure centroid) to extract the tunnel fluid.
+
+More %py-exec ground rules learned:
+- `meshing_utilities.get_objects(filter='*')` (documented form) works; bare
+  `get_objects()` raises and **any datamodel exception aborts the journal even
+  when caught in Python** — no optional queries before the main attempt.
+- `meshing_utilities` has `get_bounding_box_of_zone_list` /
+  `get_average_bounding_box_center` for coordinate queries if needed.
 
 ## Template corrections driven by this evidence
 
