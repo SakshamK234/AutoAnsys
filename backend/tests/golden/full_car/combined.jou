@@ -224,7 +224,9 @@ yes
 /solve/init/hyb-init
 
 ; ── Save case file before iterating (SOP step) ────────────────────────
-/file/write-case "/scratch/<user>/autoansys/jobs/<full_car_job>/result.cas.h5"
+; Distinct from the post-solve write — same-name write-case-data triggers an
+; overwrite prompt in batch that desyncs the journal (probe 6387661).
+/file/write-case "/scratch/<user>/autoansys/jobs/<full_car_job>/setup.cas.h5"
 
 ; ── Run (SOP: individual part 300, full car 3000) ─────────────────────
 /solve/iterate 750

@@ -42,7 +42,10 @@
 {% endif %}
 
 ; ── Save case before iterating ───────────────────────────────────────
-/file/write-case "{{ workspace }}/result.cas.h5"
+; DISTINCT name from the post-solve write: writing case-data over an existing
+; file triggers an overwrite-confirm prompt in batch that eats the next journal
+; line — result.dat.h5 silently never got written (probe 6387661).
+/file/write-case "{{ workspace }}/setup.cas.h5"
 
 ; ── Iterate ──────────────────────────────────────────────────────────
 /solve/iterate {{ solver.convergence.max_iterations | default(300) }}

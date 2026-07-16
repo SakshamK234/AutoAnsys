@@ -132,7 +132,10 @@
 /solve/init/hyb-init
 
 ; ── Save case before iterating ───────────────────────────────────────
-/file/write-case "/scratch/<user>/autoansys/jobs/<individual_part_job>/result.cas.h5"
+; DISTINCT name from the post-solve write: writing case-data over an existing
+; file triggers an overwrite-confirm prompt in batch that eats the next journal
+; line — result.dat.h5 silently never got written (probe 6387661).
+/file/write-case "/scratch/<user>/autoansys/jobs/<individual_part_job>/setup.cas.h5"
 
 ; ── Iterate ──────────────────────────────────────────────────────────
 /solve/iterate 300
