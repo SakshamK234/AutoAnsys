@@ -284,5 +284,32 @@ specialist's GUI-recorded meshing journal (`meshjournal.jou`). Analysis:
   fields; task-argument state persists between `AddChildAndUpdate` calls) —
   replay must keep the exact order.
 
-fc3 (job 6391613) replays the adapted journal end-to-end and writes
-`fc_v04_mesh.cas.h5` + zone list for solver BC wiring.
+fc3 (job 6391613) replayed the adapted journal — import succeeded (49 s to
+first error, fail-fast guard worked) but the refinement region aborted:
+**the specialist's short labels do not exist in this STEP export.** Fluent's
+error helpfully enumerated the real labels — assembly-path names like
+`vtm_27e-wheels-front-left-wheel`, `vtm_27e-front-wing`,
+`vtm_27e-rear-wing-instance-63`, `vtm_27e-chassis-27_ch_monocoque_v.5-_cfd-
+instance-7`, plus `v0.4-step-enclosure` (the fluid volume) and
+`bounding-box-instance-44`. Findings:
+
+- The file (HOOPS Exchange 24.6.0 re-export of the specialist's
+  `V0.4-step.stp`) carries NO face-level named selections at all — grep of
+  the ASCII STEP finds no inlet/outlet/symmetry/ground/trailing-edges
+  anywhere. The specialist's source file must have had them; this copy lost
+  them, so his exact journal cannot replay 1:1 on this file.
+- `trailing-edges` (his 0.25 mm face sizing + prism label) has NO
+  counterpart → dropped in fc4; TE mesh quality relies on curvature/
+  proximity sizing until a labelled export is provided.
+- BOTH right wheels exist as labels (car assembly is complete); the
+  specialist's prism/sizing lists cover left wheels only, consistent with a
+  half-car fluid volume that excludes the right side.
+- The import brings the whole tree: fluid `Enclosure`, all car solids, and
+  a `Bounding Box` body (41 MANIFOLD_SOLID_BREPs) — the fluid-only Describe
+  declaration is the specialist's own; whether Update Regions handles the
+  extra solids gracefully is answered by fc4.
+
+fc4 (job 6393124) = fc3 with label lists mapped to the real names (chassis
+group = instance-1 + 4 monocoque + 5 driver bodies; rear wing = 6 instances;
+undertray = 7; suspension = 12; whisker = 2) and the TE sizing dropped;
+writes `fc_v04_mesh.cas.h5` + zone list.
