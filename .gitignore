@@ -39,3 +39,6 @@ htmlcov/
 
 # Local CAD test articles (used for cluster validation; not versioned — 19MB+)
 geometries/
+
+# Local copies of cluster run results (large binaries; not versioned)
+results/

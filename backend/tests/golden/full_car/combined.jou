@@ -255,18 +255,20 @@ yes
 (ti-menu-load-string "display set picture x-resolution 1920")
 (ti-menu-load-string "display set picture y-resolution 1080")
 
-; Mid-plane cross-section (Z=0) for flow-field views (validated arg order).
-(ti-menu-load-string "surface iso-surface z-coordinate midplane-z () () 0 ()")
+; Mid-SPAN cross-section for flow-field views (validated arg order). In the
+; team's CAD convention z is UP (ground at z=0, probe 6380144 extents) — the
+; side-view slice is y=0. [needs-cluster] verify imagery on the next run.
+(ti-menu-load-string "surface iso-surface y-coordinate midplane-y () () 0 ()")
 
-(ti-menu-load-string "display objects create contour cont-velocity field velocity-magnitude surfaces-list midplane-z () quit")
+(ti-menu-load-string "display objects create contour cont-velocity field velocity-magnitude surfaces-list midplane-y () quit")
 (ti-menu-load-string "display objects display cont-velocity")
 (ti-menu-load-string "display save-picture \"/scratch/<user>/autoansys/jobs/<full_car_job>/contour_velocity_midplane.png\"")
 
-(ti-menu-load-string "display objects create contour cont-pressure field pressure surfaces-list midplane-z () quit")
+(ti-menu-load-string "display objects create contour cont-pressure field pressure surfaces-list midplane-y () quit")
 (ti-menu-load-string "display objects display cont-pressure")
 (ti-menu-load-string "display save-picture \"/scratch/<user>/autoansys/jobs/<full_car_job>/contour_pressure_midplane.png\"")
 
-(ti-menu-load-string "display objects create contour cont-tke field turb-kinetic-energy surfaces-list midplane-z () quit")
+(ti-menu-load-string "display objects create contour cont-tke field turb-kinetic-energy surfaces-list midplane-y () quit")
 (ti-menu-load-string "display objects display cont-tke")
 (ti-menu-load-string "display save-picture \"/scratch/<user>/autoansys/jobs/<full_car_job>/contour_tke_midplane.png\"")
 
