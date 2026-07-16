@@ -234,10 +234,24 @@ def test_mesh_workflow_unknown_raises():
 
 
 def test_per_profile_mesh_workflow():
+    # Both profiles now run Watertight: the wing SOP path and the specialist
+    # full-car recipe (meshjournal.jou on V0.4-stepFC). Full car must carry the
+    # specialist-only pieces; the component path must NOT grow them.
     comp = render_profile_artifacts("individual_part")["mesh_only.jou"]
     full = render_profile_artifacts("full_car")["mesh_only.jou"]
     assert "Watertight Geometry" in comp
-    assert "Fault-tolerant Meshing" in full
+    assert "Watertight Geometry" in full
+    for marker in (
+        "CreateLocalRefinementRegions",
+        "'RefinementRegionsName': r'front-tire-wake'",
+        "'SetupType': r'The geometry consists of only fluid regions with no voids'",
+        "'WallToInternal': r'Yes'",
+        "'GrowOn': r'selected-labels'",
+        "'VolumeFill': r'poly-hexcore'",
+        "'HexMaxCellLength': 32.0",
+    ):
+        assert marker in full, f"specialist step missing from full_car: {marker}"
+        assert marker not in comp, f"specialist step leaked into component: {marker}"
 
 
 def test_prism_layer_count_from_config():
@@ -253,7 +267,18 @@ def test_prism_layer_count_from_config():
 def test_ft_template_uses_proven_vwt_sequence():
     # The FT journal must carry the ARC-proven sequence (probes 6372187-6379995;
     # first complete mesh: wing_probe29.cas.h5, 222,745 cells in 2m03s).
-    mesh = render_profile_artifacts("full_car")["mesh_only.jou"]
+    # No profile defaults to FT any more (full_car moved to the specialist
+    # watertight recipe) — render it via an explicit workflow override, the
+    # supported route for unlabelled dirty assemblies.
+    cfg = example_config("full_car")
+    cfg["mesh"]["workflow"] = "fault-tolerant"
+    gen = JournalGenerator()
+    mesh = gen.generate_mesh_journal(
+        mesh_config=cfg["mesh"],
+        geometry_file="/workspace/geom.stp",
+        workspace="/workspace",
+        cfd_mode="full_car",
+    )
     for line in (
         "PartManagement.InputFileChanged",
         "PMFileManagement.FileManager.LoadFiles()",

@@ -93,9 +93,93 @@ profiles:
       cores_per_node: 128
       memory_gb: 243
       walltime_hours: 24
-    # Dirty multi-body assembly → Fault-tolerant (surface-wrapped) workflow.
+    # Specialist-validated watertight recipe (meshjournal.jou, V0.4-stepFC):
+    # the full-car STEP models the tunnel-minus-car FLUID volume directly
+    # ("only fluid regions with no voids" + wall-to-internal), with named face
+    # labels (chassis / wings / wheels / trailing-edges / undertray /
+    # suspension / whisker). Sizes in mm. Replaces the fault-tolerant/wrap
+    # path, which is kept only for unlabelled dirty assemblies.
     mesh:
-      workflow: fault-tolerant
+      workflow: watertight
+      geometry_unit: mm
+      describe_setup_type: fluid-only
+      wall_to_internal: true
+      pin_cad_import_options: false   # specialist import = task defaults
+      # Specialist journal relies on task-default zone handling; the SOP
+      # OriginalZones names do not exist in this CAD.
+      original_zones: null
+      surface_mesh:
+        min_size: 1.0
+        max_size: 50.0
+        curvature_normal_angle: 18.0
+        growth_rate: 1.2
+      mesh_quality:
+        surface_skewness_threshold: 0.6
+        sq_min_size: 0.25          # trailing-edge face size
+        auto_improve: true
+        improve_volume: false      # specialist journal has no volume improve
+      refinement_regions:
+        - name: front-tire-wake
+          max_size: 5
+          labels: [front-left-wheel]
+          x_min_ratio: 1.0         # wake stretch behind the wheel
+        - name: rear-tire-wake
+          max_size: 5
+          labels: [rear-left-wheel]
+          x_min_ratio: 1.5
+          y_min_ratio: 2.5
+        - name: nearfield
+          max_size: 10
+          # Absolute box (mm). y_min/z_min inherit GUI leftovers in the
+          # recording (delta-state) — reproduced here for fidelity.
+          x_min: -1500.0
+          x_max: 2500.0
+          y_min: 31.68325805664045
+          y_max: 1000.0
+          z_min: -38.14357504844666
+          z_max: 2000.0
+      local_sizing:
+        - name: fw-rw-whisker
+          type: face_sizing
+          size: 5.0
+          growth_rate: 1.2
+          cells_per_gap: 1
+          curvature_normal_angle: 18.0
+          face_zones: [front-wing, rear-wing, whisker]
+        - name: trailing-edges
+          type: face_sizing
+          size: 0.25
+          growth_rate: 1.2
+          cells_per_gap: 1
+          curvature_normal_angle: 18.0
+          face_zones: [trailing-edges]
+        - name: undertray
+          type: face_sizing
+          size: 2.5
+          growth_rate: 1.2
+          cells_per_gap: 1
+          curvature_normal_angle: 18.0
+          face_zones: [undertray]
+        - name: chassis
+          type: face_sizing
+          size: 10.0
+          growth_rate: 1.2
+          cells_per_gap: 1
+          curvature_normal_angle: 18.0
+          face_zones: [chassis]
+        - name: wheels
+          type: face_sizing
+          size: 10.0
+          growth_rate: 1.2
+          cells_per_gap: 1
+          curvature_normal_angle: 18.0
+          face_zones: [front-left-wheel, rear-left-wheel]
+      volume_mesh:
+        fill: poly-hexcore
+        hex_max_cell_length: 32.0
+        num_layers: 6
+        prism_labels: [chassis, front-left-wheel, front-wing, rear-left-wheel,
+                       rear-wing, suspension, trailing-edges, undertray, whisker]
     boundary_conditions:
       velocity_inlets:
         - zone_name: inlet

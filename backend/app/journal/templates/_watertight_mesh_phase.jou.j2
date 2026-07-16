@@ -1,0 +1,147 @@
+; ════════════════════════════════════════════════════════════════════════
+; SHARED WATERTIGHT MESH PHASE — included by mesh_watertight.jou.j2
+; (combined mesh+solve) and mesh_only.jou.j2 (split workflow) so the two
+; paths cannot diverge. Wing-validated SOP path + specialist full-car
+; recipe (meshjournal.jou on V0.4-stepFC), both config-driven.
+; ════════════════════════════════════════════════════════════════════════
+
+; ── Initialize Watertight Geometry Workflow ───────────────────────────
+(%py-exec "workflow.InitializeWorkflow(WorkflowType=r'Watertight Geometry')")
+
+; ── 1. Import Geometry ───────────────────────────────────────────────
+; OneZonePer='body' — robust default for 2025R1. 'label' is rejected
+; ("Invalid Input label") and 'face' creates per-face zones that segfault
+; Update Regions ("> invalid argument: not a number") on car-scale
+; geometries. Discovery face labels survive as CAD face labels on the body;
+; Update Boundaries below uses original_zones to map them to the SOP zone
+; names (inlet / outlet / ground / symmetry / walls).
+; NOTE: SaveFacetedFile was removed from CadImportOptions in 2025R1
+;       ("Illegitimate input at /ImportGeometry/CadImportOptions").
+; pin_cad_import_options=false (specialist full-car path) sets only
+; FileName/LengthUnit and leaves every import option at task defaults,
+; matching the specialist journal byte-for-byte.
+{% if mesh.pin_cad_import_options | default(true) %}
+(%py-exec "workflow.TaskObject['Import Geometry'].Arguments.set_state({'FileName': r'{{ geometry_file }}', 'LengthUnit': r'{{ mesh.geometry_unit | default("mm") }}', 'CadImportOptions': {'OneZonePer': r'body', 'FeatureAngle': 40.0, 'ExtractFeatures': r'yes'}, 'ImportCadPreferences': {'ShowImportCadPreferences': False, 'MaxFacetLength': 0}})")
+{% else %}
+(%py-exec "workflow.TaskObject['Import Geometry'].Arguments.set_state({r'FileName': r'{{ geometry_file }}', r'LengthUnit': r'{{ mesh.geometry_unit | default("mm") }}'})")
+{% endif %}
+(%py-exec "workflow.TaskObject['Import Geometry'].Execute()")
+
+{% set refinement_regions = mesh.refinement_regions | default([]) %}
+{% if refinement_regions %}
+; ── 1b. Create Local Refinement Regions (specialist full-car journal) ─
+; Wake/nearfield BOI boxes. Task is not built-in — inserted after Import.
+; Relative boxes size 'Ratio relative to geometry size' around the selected
+; face labels; absolute boxes use 'Directly specify coordinates'.
+(%py-exec "workflow.TaskObject['Import Geometry'].InsertNextTask(CommandName=r'CreateLocalRefinementRegions')")
+{% for rr in refinement_regions %}
+{% if rr.labels %}
+(%py-exec "workflow.TaskObject['Create Local Refinement Regions'].Arguments.set_state({r'BOIMaxSize': {{ rr.max_size }}, r'CreationMethod': r'Box', r'SelectionType': r'label', r'LabelSelectionList': [{% for l in rr.labels %}r'{{ l }}'{% if not loop.last %}, {% endif %}{% endfor %}], r'BoundingBoxObject': {r'SizeRelativeLength': r'Ratio relative to geometry size', r'XminRatio': {{ rr.x_min_ratio }}, r'XmaxRatio': {{ rr.x_max_ratio }}, r'YminRatio': {{ rr.y_min_ratio }}, r'YmaxRatio': {{ rr.y_max_ratio }}, r'ZminRatio': {{ rr.z_min_ratio }}, r'ZmaxRatio': {{ rr.z_max_ratio }}}, r'RefinementRegionsName': r'{{ rr.name }}'})")
+{% else %}
+(%py-exec "workflow.TaskObject['Create Local Refinement Regions'].Arguments.set_state({r'BOIMaxSize': {{ rr.max_size }}, r'CreationMethod': r'Box', r'BoundingBoxObject': {r'SizeRelativeLength': r'Directly specify coordinates', r'Xmin': {{ rr.x_min }}, r'Xmax': {{ rr.x_max }}, r'Ymin': {{ rr.y_min }}, r'Ymax': {{ rr.y_max }}, r'Zmin': {{ rr.z_min }}, r'Zmax': {{ rr.z_max }}}, r'RefinementRegionsName': r'{{ rr.name }}'})")
+{% endif %}
+(%py-exec "workflow.TaskObject['Create Local Refinement Regions'].AddChildAndUpdate(DeferUpdate=False)")
+{% endfor %}
+{% endif %}
+
+; ── 2. Add Local Sizing ──────────────────────────────────────────────
+; SOP local-sizing categories: aero / chassis / wheels / intake.
+; Pattern per specialist journal: set_state({AddChild: yes, …}) then
+; AddChildAndUpdate(DeferUpdate=False) — no separate Execute.
+{% for region in mesh.local_sizing %}
+{% if region.type == "body_of_influence" %}
+(%py-exec "workflow.TaskObject['Add Local Sizing'].Arguments.set_state({r'AddChild': r'yes', r'BOIControlName': r'{{ region.name }}', r'BOIExecution': r'Body Of Influence', r'BOISize': {{ region.size }}, r'BOIGrowthRate': {{ region.growth_rate }}})")
+{% else %}
+(%py-exec "workflow.TaskObject['Add Local Sizing'].Arguments.set_state({r'AddChild': r'yes', r'BOIControlName': r'{{ region.name }}', r'BOIExecution': r'Face Size', r'BOISize': {{ region.size }}, r'BOIGrowthRate': {{ region.growth_rate }}{% if region.cells_per_gap is not none %}, r'BOICellsPerGap': {{ region.cells_per_gap }}{% endif %}{% if region.curvature_normal_angle is not none %}, r'BOICurvatureNormalAngle': {{ region.curvature_normal_angle }}{% endif %}, r'BOIZoneorLabel': r'label', r'BOIFaceLabelList': [{% for face in region.face_zones %}r'{{ face }}'{% if not loop.last %}, {% endif %}{% endfor %}]})")
+{% endif %}
+(%py-exec "workflow.TaskObject['Add Local Sizing'].AddChildAndUpdate(DeferUpdate=False)")
+{% endfor %}
+
+; ── 3. Generate Surface Mesh ─────────────────────────────────────────
+; SOP path: ExecuteShareTopology='No' + explicit OriginalZones (Discovery
+; labels). Specialist full-car path: original_zones null → both keys omitted,
+; task defaults handle the labelled STEP.
+{% set original_zones = mesh.original_zones | default(none) %}
+(%py-exec "workflow.TaskObject['Generate the Surface Mesh'].Arguments.set_state({'CFDSurfaceMeshControls': {'DrawSizeControl': False, 'MinSize': {{ mesh.surface_mesh.min_size }}, 'MaxSize': {{ mesh.surface_mesh.max_size }}, 'GrowthRate': {{ mesh.surface_mesh.growth_rate }}, 'CurvatureNormalAngle': {{ mesh.surface_mesh.curvature_normal_angle }}, 'ScopeProximityTo': r'faces-and-edges'}{% if original_zones %}, 'ExecuteShareTopology': r'No', 'OriginalZones': [{% for z in original_zones %}r'{{ z }}'{% if not loop.last %}, {% endif %}{% endfor %}]{% endif %}})")
+(%py-exec "workflow.TaskObject['Generate the Surface Mesh'].Execute()")
+
+{% set mq = mesh.mesh_quality | default({}) %}
+{% set fluid_only = mesh.describe_setup_type | default('default') == 'fluid-only' %}
+{% if fluid_only %}
+; Specialist ordering: Describe Geometry is primed (set_state(None) +
+; UpdateChildTasks) BEFORE Improve Surface Mesh, then configured after it.
+(%py-exec "workflow.TaskObject['Describe Geometry'].Arguments.set_state(None)")
+(%py-exec "workflow.TaskObject['Describe Geometry'].UpdateChildTasks(Arguments={r'v1': True}, SetupTypeChanged=False)")
+{% endif %}
+
+; ── 3b. Improve Surface Mesh (SOP FaceQualityLimit 0.6, wall-zones scope) ─
+; Improve Surface Mesh is NOT a built-in Watertight task — must be inserted
+; after Generate Surface Mesh before TaskObject[...] can reference it.
+{% if mq.get('auto_improve', True) %}
+(%py-exec "workflow.TaskObject['Generate the Surface Mesh'].InsertNextTask(CommandName='ImproveSurfaceMesh')")
+(%py-exec "workflow.TaskObject['Improve Surface Mesh'].Arguments.set_state({'FaceQualityLimit': {{ mq.get('surface_skewness_threshold', 0.6) }}, 'MeshObject': r'', 'SMImprovePreferences': {'AdvancedImprove': r'no', 'AllowDefeaturing': r'no', 'SIQualityCollapseLimit': 0.85, 'SIQualityIterations': 5, 'SIQualityMaxAngle': 160, 'SIRemoveStep': r'no', 'SIStepQualityLimit': 0, 'SIStepWidth': 0, 'ShowSMImprovePreferences': False}, 'SQMinSize': {{ mq.get('sq_min_size') if mq.get('sq_min_size') is not none else mesh.surface_mesh.min_size }}, 'ScopeImproveTo': r'wall-zones'})")
+(%py-exec "workflow.TaskObject['Improve Surface Mesh'].Execute()")
+{% endif %}
+
+; ── 4. Describe Geometry ─────────────────────────────────────────────
+{% if fluid_only %}
+; Specialist full-car journal: the CAD models the tunnel-minus-car FLUID
+; volume directly → declare fluid-only regions (+ wall-to-internal), with
+; SetupTypeChanged=True so child tasks re-seed.
+(%py-exec "workflow.TaskObject['Describe Geometry'].UpdateChildTasks(Arguments={r'v1': True}, SetupTypeChanged=False)")
+(%py-exec "workflow.TaskObject['Describe Geometry'].Arguments.set_state({r'NonConformal': r'No', r'SetupType': r'The geometry consists of only fluid regions with no voids', r'WallToInternal': r'{{ 'Yes' if mesh.wall_to_internal | default(false) else 'No' }}'})")
+(%py-exec "workflow.TaskObject['Describe Geometry'].UpdateChildTasks(Arguments={r'v1': True}, SetupTypeChanged=True)")
+(%py-exec "workflow.TaskObject['Describe Geometry'].Execute()")
+{% else %}
+; Reference journal: defaults + UpdateChildTasks({v1: True}, SetupTypeChanged=False).
+; The SOP CAD already contains the enclosure, so the default SetupType is correct
+; and we do NOT override it here.
+(%py-exec "workflow.TaskObject['Describe Geometry'].UpdateChildTasks(Arguments={'v1': True}, SetupTypeChanged=False)")
+(%py-exec "workflow.TaskObject['Describe Geometry'].Execute()")
+{% endif %}
+
+; ── 5. Update Boundaries ─────────────────────────────────────────────
+; Reference: set_state(None) then Execute — picks up the Discovery-applied labels.
+(%py-exec "workflow.TaskObject['Update Boundaries'].Arguments.set_state(None)")
+(%py-exec "workflow.TaskObject['Update Boundaries'].Execute()")
+
+; ── 6. Update Regions ────────────────────────────────────────────────
+(%py-exec "workflow.TaskObject['Update Regions'].Arguments.set_state(None)")
+(%py-exec "workflow.TaskObject['Update Regions'].Execute()")
+
+; ── 7. Add Boundary Layers ──────────────────────────────────────────
+; SOP: last-ratio offset method with Continuous local-prism preference.
+; NumberOfLayers driven from config (AUDIT C6 — volume_mesh.num_layers was ignored).
+; F9: wall-resolved y+ ≈ 1 target; optional FirstHeight when first_layer_height_mm
+; is set (unset keeps the proven SOP last-ratio defaults).
+; [needs-cluster] verify 2025R1 honours FirstHeight with OffsetMethodType='last-ratio'.
+{% set prism_labels = mesh.volume_mesh.prism_labels | default([]) %}
+{% if prism_labels %}
+; Specialist full-car journal: grow prisms only on the selected body labels
+; (BLControlName 'last-ratio_1', FaceScope 'selected-labels'); the
+; AddChildAndUpdate(DeferUpdate=False) performs the update — no Execute.
+(%py-exec "workflow.TaskObject['Add Boundary Layers'].Arguments.set_state({r'BLControlName': r'last-ratio_1', r'BlLabelList': [{% for l in prism_labels %}r'{{ l }}'{% if not loop.last %}, {% endif %}{% endfor %}], r'FaceScope': {r'GrowOn': r'selected-labels'}, r'LocalPrismPreferences': {r'Continuous': r'Continuous'}, r'NumberOfLayers': {{ mesh.volume_mesh.num_layers | default(15) }}{% if mesh.volume_mesh.first_layer_height_mm %}, r'FirstHeight': {{ mesh.volume_mesh.first_layer_height_mm }}{% endif %}, r'OffsetMethodType': r'last-ratio'})")
+(%py-exec "workflow.TaskObject['Add Boundary Layers'].AddChildAndUpdate(DeferUpdate=False)")
+{% else %}
+; Setting OffsetMethodType='last-ratio' before AddChildAndUpdate makes the
+; spawned child task be named 'last-ratio_1' (default would be 'smooth-transition_1').
+(%py-exec "workflow.TaskObject['Add Boundary Layers'].Arguments.set_state({'LocalPrismPreferences': {'Continuous': r'Continuous'}, 'OffsetMethodType': r'last-ratio', 'NumberOfLayers': {{ mesh.volume_mesh.num_layers | default(15) }}{% if mesh.volume_mesh.first_layer_height_mm %}, 'FirstHeight': {{ mesh.volume_mesh.first_layer_height_mm }}{% endif %}})")
+(%py-exec "workflow.TaskObject['Add Boundary Layers'].AddChildAndUpdate(DeferUpdate=False)")
+(%py-exec "workflow.TaskObject['last-ratio_1'].Execute()")
+{% endif %}
+
+; ── 8. Generate Volume Mesh ──────────────────────────────────────────
+{% if mesh.volume_mesh.fill | default('default') == 'poly-hexcore' %}
+; Specialist full-car journal: poly-hexcore fill with HexMaxCellLength.
+(%py-exec "workflow.TaskObject['Generate the Volume Mesh'].Arguments.set_state({r'VolumeFill': r'poly-hexcore', r'VolumeFillControls': {r'HexMaxCellLength': {{ mesh.volume_mesh.hex_max_cell_length | default(32) }}}})")
+{% endif %}
+(%py-exec "workflow.TaskObject['Generate the Volume Mesh'].Execute()")
+
+; ── 8b. Improve Volume Mesh (SOP ortho-quality threshold 0.15) ───────
+; Same pattern — must be inserted before reference. Gated separately from the
+; surface improve: the specialist full-car journal skips it.
+{% if mq.get('auto_improve', True) and mq.get('improve_volume', True) %}
+(%py-exec "workflow.TaskObject['Generate the Volume Mesh'].InsertNextTask(CommandName='ImproveVolumeMesh')")
+(%py-exec "workflow.TaskObject['Improve Volume Mesh'].Execute()")
+{% endif %}
+

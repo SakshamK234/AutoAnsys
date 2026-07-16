@@ -81,8 +81,16 @@ def test_per_profile_slurm_presets():
 
 
 def test_per_profile_mesh_workflow():
+    # full_car switched to the specialist-validated watertight recipe
+    # (fluid-only V0.4 CAD); fault-tolerant remains available by explicit
+    # config for unlabelled dirty assemblies.
     assert resolve_profile("individual_part")["mesh"]["workflow"] == "watertight"
-    assert resolve_profile("full_car")["mesh"]["workflow"] == "fault-tolerant"
+    full = resolve_profile("full_car")["mesh"]
+    assert full["workflow"] == "watertight"
+    assert full["describe_setup_type"] == "fluid-only"
+    assert full["volume_mesh"]["fill"] == "poly-hexcore"
+    assert len(full["refinement_regions"]) == 3
+    assert len(full["local_sizing"]) == 5
 
 
 def test_resolve_returns_independent_copies():

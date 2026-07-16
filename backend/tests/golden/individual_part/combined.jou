@@ -12,6 +12,13 @@
 ; PHASE 1: MESHING
 ; ══════════════════════════════════════════════════════════════════════
 
+; ════════════════════════════════════════════════════════════════════════
+; SHARED WATERTIGHT MESH PHASE — included by mesh_watertight.jou.j2
+; (combined mesh+solve) and mesh_only.jou.j2 (split workflow) so the two
+; paths cannot diverge. Wing-validated SOP path + specialist full-car
+; recipe (meshjournal.jou on V0.4-stepFC), both config-driven.
+; ════════════════════════════════════════════════════════════════════════
+
 ; ── Initialize Watertight Geometry Workflow ───────────────────────────
 (%py-exec "workflow.InitializeWorkflow(WorkflowType=r'Watertight Geometry')")
 
@@ -24,21 +31,25 @@
 ; names (inlet / outlet / ground / symmetry / walls).
 ; NOTE: SaveFacetedFile was removed from CadImportOptions in 2025R1
 ;       ("Illegitimate input at /ImportGeometry/CadImportOptions").
+; pin_cad_import_options=false (specialist full-car path) sets only
+; FileName/LengthUnit and leaves every import option at task defaults,
+; matching the specialist journal byte-for-byte.
 (%py-exec "workflow.TaskObject['Import Geometry'].Arguments.set_state({'FileName': r'/scratch/<user>/autoansys/jobs/<individual_part_job>/geometry.x_t', 'LengthUnit': r'mm', 'CadImportOptions': {'OneZonePer': r'body', 'FeatureAngle': 40.0, 'ExtractFeatures': r'yes'}, 'ImportCadPreferences': {'ShowImportCadPreferences': False, 'MaxFacetLength': 0}})")
 (%py-exec "workflow.TaskObject['Import Geometry'].Execute()")
 
+
 ; ── 2. Add Local Sizing ──────────────────────────────────────────────
-; SOP local-sizing categories: aero / chassis / wheels / intake
-; SOP local-refinement regions:  nearfield / farfield / rear_wing
+; SOP local-sizing categories: aero / chassis / wheels / intake.
+; Pattern per specialist journal: set_state({AddChild: yes, …}) then
+; AddChildAndUpdate(DeferUpdate=False) — no separate Execute.
 
 ; ── 3. Generate Surface Mesh ─────────────────────────────────────────
-; Reference journal (SOP): ExecuteShareTopology='No', DrawSizeControl=False,
-; ScopeProximityTo='faces-and-edges', OriginalZones listed explicitly.
-; The SOP CAD is exported from Discovery with the enclosure already built and
-; faces labeled (inlet / outlet / ground / symmetry / walls / aero components),
-; so Fluent does NOT need to cap or share-topology.
+; SOP path: ExecuteShareTopology='No' + explicit OriginalZones (Discovery
+; labels). Specialist full-car path: original_zones null → both keys omitted,
+; task defaults handle the labelled STEP.
 (%py-exec "workflow.TaskObject['Generate the Surface Mesh'].Arguments.set_state({'CFDSurfaceMeshControls': {'DrawSizeControl': False, 'MinSize': 2.0, 'MaxSize': 264.0, 'GrowthRate': 1.2, 'CurvatureNormalAngle': 18.0, 'ScopeProximityTo': r'faces-and-edges'}, 'ExecuteShareTopology': r'No', 'OriginalZones': [r'inlet', r'outlet', r'ground', r'symmetry', r'walls']})")
 (%py-exec "workflow.TaskObject['Generate the Surface Mesh'].Execute()")
+
 
 ; ── 3b. Improve Surface Mesh (SOP FaceQualityLimit 0.6, wall-zones scope) ─
 ; Improve Surface Mesh is NOT a built-in Watertight task — must be inserted
@@ -65,24 +76,25 @@
 
 ; ── 7. Add Boundary Layers ──────────────────────────────────────────
 ; SOP: last-ratio offset method with Continuous local-prism preference.
-; Setting OffsetMethodType='last-ratio' before AddChildAndUpdate makes the
-; spawned child task be named 'last-ratio_1' (default would be 'smooth-transition_1').
 ; NumberOfLayers driven from config (AUDIT C6 — volume_mesh.num_layers was ignored).
 ; F9: wall-resolved y+ ≈ 1 target; optional FirstHeight when first_layer_height_mm
 ; is set (unset keeps the proven SOP last-ratio defaults).
 ; [needs-cluster] verify 2025R1 honours FirstHeight with OffsetMethodType='last-ratio'.
+; Setting OffsetMethodType='last-ratio' before AddChildAndUpdate makes the
+; spawned child task be named 'last-ratio_1' (default would be 'smooth-transition_1').
 (%py-exec "workflow.TaskObject['Add Boundary Layers'].Arguments.set_state({'LocalPrismPreferences': {'Continuous': r'Continuous'}, 'OffsetMethodType': r'last-ratio', 'NumberOfLayers': 15})")
 (%py-exec "workflow.TaskObject['Add Boundary Layers'].AddChildAndUpdate(DeferUpdate=False)")
 (%py-exec "workflow.TaskObject['last-ratio_1'].Execute()")
 
 ; ── 8. Generate Volume Mesh ──────────────────────────────────────────
-; Reference: no custom args, uses Watertight defaults.
 (%py-exec "workflow.TaskObject['Generate the Volume Mesh'].Execute()")
 
 ; ── 8b. Improve Volume Mesh (SOP ortho-quality threshold 0.15) ───────
-; Same pattern — must be inserted before reference.
+; Same pattern — must be inserted before reference. Gated separately from the
+; surface improve: the specialist full-car journal skips it.
 (%py-exec "workflow.TaskObject['Generate the Volume Mesh'].InsertNextTask(CommandName='ImproveVolumeMesh')")
 (%py-exec "workflow.TaskObject['Improve Volume Mesh'].Execute()")
+
 
 ; ══════════════════════════════════════════════════════════════════════
 ; TRANSITION: Switch from meshing mode to solver mode

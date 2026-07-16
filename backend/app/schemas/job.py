@@ -33,6 +33,42 @@ class LocalSizingRegion(BaseModel):
     z_max: float | None = None
     # Face-sizing-specific
     face_zones: list[str] = []
+    # Optional Fluent sizing-control extras (specialist full-car journal):
+    # emitted only when set, so existing configs render unchanged.
+    cells_per_gap: int | None = None
+    curvature_normal_angle: float | None = None
+
+
+class RefinementRegionBox(BaseModel):
+    """A 'Create Local Refinement Regions' box (Watertight workflow task).
+
+    From the specialist full-car journal. Two creation flavours:
+      - ``labels`` set → box sized 'Ratio relative to geometry size' around the
+        selected face labels' bounding box (tire-wake boxes). Per-side ratios
+        default to the specialist's 0.1; the wake side is stretched via the
+        matching ratio (e.g. ``x_min_ratio: 1.5``).
+      - ``labels`` empty → absolute-coordinate box in geometry units
+        ('Directly specify coordinates').
+    ``max_size`` is the BOI max cell size in geometry units.
+    """
+
+    name: str
+    max_size: float
+    labels: list[str] = []
+    # Relative mode: per-side expansion ratios.
+    x_min_ratio: float = 0.1
+    x_max_ratio: float = 0.1
+    y_min_ratio: float = 0.1
+    y_max_ratio: float = 0.1
+    z_min_ratio: float = 0.1
+    z_max_ratio: float = 0.1
+    # Absolute mode: box coordinates (geometry units).
+    x_min: float | None = None
+    x_max: float | None = None
+    y_min: float | None = None
+    y_max: float | None = None
+    z_min: float | None = None
+    z_max: float | None = None
 
 
 class SurfaceMeshConfig(BaseModel):
@@ -61,6 +97,14 @@ class VolumeMeshConfig(BaseModel):
     first_layer_height: float = 5e-5
     num_layers: int = 15
     bl_growth_rate: float = 1.2
+    # Grow prisms only on these face labels (specialist full-car journal:
+    # FaceScope 'selected-labels' + BlLabelList). Empty → default wall scope.
+    prism_labels: list[str] = []
+    # Volume fill: "default" keeps the Watertight default (validated on the
+    # wing); "poly-hexcore" matches the specialist full-car journal, with
+    # hex_max_cell_length (geometry units) → VolumeFillControls.HexMaxCellLength.
+    fill: str = "default"
+    hex_max_cell_length: float | None = None
 
 
 class WindTunnelConfig(BaseModel):
@@ -99,10 +143,20 @@ class MeshQuality(BaseModel):
     surface_skewness_threshold: float = 0.6
     volume_orthogonal_quality_threshold: float = 0.15
     auto_improve: bool = True
+    # Improve Volume Mesh insertion after Generate Volume Mesh. Separate from
+    # auto_improve (surface) because the specialist full-car journal improves
+    # the surface mesh but not the volume mesh.
+    improve_volume: bool = True
+    # Improve Surface Mesh SQMinSize; None → surface_mesh.min_size. The
+    # specialist full-car journal uses 0.25 (the trailing-edge face size).
+    sq_min_size: float | None = None
 
 
 class MeshConfig(BaseModel):
     local_sizing: list[LocalSizingRegion] = []
+    # Watertight 'Create Local Refinement Regions' boxes (specialist full-car
+    # journal): tire-wake boxes relative to wheel labels + absolute nearfield.
+    refinement_regions: list[RefinementRegionBox] = []
     surface_mesh: SurfaceMeshConfig = Field(default_factory=SurfaceMeshConfig)
     volume_mesh: VolumeMeshConfig = Field(default_factory=VolumeMeshConfig)
     wind_tunnel: WindTunnelConfig = Field(default_factory=WindTunnelConfig)
@@ -119,8 +173,10 @@ class MeshConfig(BaseModel):
     build_enclosure: bool = False
     # Face labels the user applied in Discovery to the Parasolid export.
     # Passed as Generate Surface Mesh `OriginalZones` so Fluent preserves them
-    # through meshing. Matches the FSAE SOP convention exactly.
-    original_zones: list[str] = Field(
+    # through meshing. Matches the FSAE SOP convention exactly. None → omit
+    # OriginalZones/ExecuteShareTopology entirely (specialist full-car journal
+    # relies on the task defaults; its labels differ from the SOP names).
+    original_zones: list[str] | None = Field(
         default_factory=lambda: [
             "inlet",
             "outlet",
@@ -129,6 +185,16 @@ class MeshConfig(BaseModel):
             "walls",
         ]
     )
+    # Describe Geometry setup (specialist full-car journal): "fluid-only"
+    # declares 'The geometry consists of only fluid regions with no voids'
+    # (the CAD models the tunnel-minus-car fluid volume directly) and pairs
+    # with wall_to_internal. "default" keeps the wing-validated behaviour.
+    describe_setup_type: str = "default"  # default | fluid-only
+    wall_to_internal: bool = False
+    # True → pin the wing-validated CadImportOptions (OneZonePer 'body',
+    # feature extraction). False → set only FileName/LengthUnit and keep the
+    # Import task defaults, matching the specialist full-car journal.
+    pin_cad_import_options: bool = True
 
 
 # ── Solver Configuration ─────────────────────────────────────────────────
@@ -497,17 +563,33 @@ def apply_cfd_mode_slurm_defaults(mode: str, sc: "SlurmConfig") -> "SlurmConfig"
     return sc
 
 
-def apply_cfd_mode_mesh_defaults(mode: str, mc: "MeshConfig") -> "MeshConfig":
-    """Seed the per-profile mesh workflow (watertight vs fault-tolerant).
+def _deep_merge(base: dict, override: dict) -> dict:
+    """Recursively merge ``override`` into a copy of ``base`` (dicts only)."""
+    merged = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
 
-    Applied only while ``workflow`` is still at the schema default ("watertight"),
-    so a user who chose a workflow is not overridden. Unknown modes are a no-op.
+
+def apply_cfd_mode_mesh_defaults(mode: str, mc: "MeshConfig") -> "MeshConfig":
+    """Seed the per-profile mesh preset (workflow, sizing, refinement regions).
+
+    A fully-default ``mc`` receives the whole profile ``mesh`` preset (deep
+    merged over schema defaults) — this is how full_car picks up the
+    specialist watertight recipe. A user-customised ``mc`` only gets the
+    legacy workflow seeding so explicit choices are never overridden.
+    Unknown modes are a no-op.
     """
     try:
         profile = resolve_profile(mode)
     except UnknownProfileError:
         return mc
     preset = profile.get("mesh") or {}
+    if mc == MeshConfig():
+        return MeshConfig.model_validate(_deep_merge(mc.model_dump(), preset))
     if mc.workflow == "watertight" and "workflow" in preset:
         mc.workflow = preset["workflow"]
     return mc

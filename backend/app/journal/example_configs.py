@@ -28,6 +28,7 @@ import copy
 
 _MESH: dict = {
     "local_sizing": [],
+    "refinement_regions": [],
     "surface_mesh": {
         "min_size": 2.0,
         "max_size": 264.0,
@@ -43,6 +44,9 @@ _MESH: dict = {
         "first_layer_height": 5e-05,  # deprecated, never emitted
         "num_layers": 15,
         "bl_growth_rate": 1.2,
+        "prism_labels": [],
+        "fill": "default",
+        "hex_max_cell_length": None,
     },
     "wind_tunnel": {
         "x_min": -5.0, "x_max": 15.0,
@@ -59,16 +63,104 @@ _MESH: dict = {
         "surface_skewness_threshold": 0.6,
         "volume_orthogonal_quality_threshold": 0.15,
         "auto_improve": True,
+        "improve_volume": True,
+        "sq_min_size": None,
     },
     "geometry_unit": "mm",
     "workflow": "watertight",
     "build_enclosure": False,
     "original_zones": ["inlet", "outlet", "ground", "symmetry", "walls"],
+    "describe_setup_type": "default",
+    "wall_to_internal": False,
+    "pin_cad_import_options": True,
 }
 
-# Full car uses the fault-tolerant (surface-wrapped) workflow (AUDIT C11).
+
+def _face_sizing(name: str, size: float, faces: list[str]) -> dict:
+    """Specialist full-car face sizing (CellsPerGap 1, curvature angle 18°)."""
+    return {
+        "name": name, "type": "face_sizing", "category": None,
+        "size": size, "growth_rate": 1.2,
+        "x_min": None, "x_max": None, "y_min": None, "y_max": None,
+        "z_min": None, "z_max": None,
+        "face_zones": faces,
+        "cells_per_gap": 1, "curvature_normal_angle": 18.0,
+    }
+
+
+def _wake_box(name: str, labels: list[str], **ratios: float) -> dict:
+    """Specialist tire-wake box: ratio-relative to the labels' bounding box."""
+    box = {
+        "name": name, "max_size": 5.0, "labels": labels,
+        "x_min_ratio": 0.1, "x_max_ratio": 0.1,
+        "y_min_ratio": 0.1, "y_max_ratio": 0.1,
+        "z_min_ratio": 0.1, "z_max_ratio": 0.1,
+        "x_min": None, "x_max": None, "y_min": None, "y_max": None,
+        "z_min": None, "z_max": None,
+    }
+    box.update({f"{k}_ratio": v for k, v in ratios.items()})
+    return box
+
+
+# Full car: specialist-validated watertight recipe (meshjournal.jou on
+# V0.4-stepFC — fluid-only CAD, wake/nearfield boxes, poly-hexcore). Mirrors
+# profiles.yaml full_car.mesh — the production source of truth.
 _MESH_OVERRIDES: dict = {
-    "full_car": {"workflow": "fault-tolerant"},
+    "full_car": {
+        "workflow": "watertight",
+        "geometry_unit": "mm",
+        "describe_setup_type": "fluid-only",
+        "wall_to_internal": True,
+        "pin_cad_import_options": False,
+        "original_zones": None,
+        "surface_mesh": {
+            "min_size": 1.0, "max_size": 50.0,
+            "curvature_normal_angle": 18.0, "growth_rate": 1.2,
+        },
+        "mesh_quality": {
+            "surface_skewness_threshold": 0.6,
+            "volume_orthogonal_quality_threshold": 0.15,
+            "auto_improve": True,
+            "improve_volume": False,   # specialist journal has no volume improve
+            "sq_min_size": 0.25,       # trailing-edge face size
+        },
+        "refinement_regions": [
+            _wake_box("front-tire-wake", ["front-left-wheel"], x_min=1.0),
+            _wake_box("rear-tire-wake", ["rear-left-wheel"], x_min=1.5, y_min=2.5),
+            {
+                "name": "nearfield", "max_size": 10.0, "labels": [],
+                "x_min_ratio": 0.1, "x_max_ratio": 0.1,
+                "y_min_ratio": 0.1, "y_max_ratio": 0.1,
+                "z_min_ratio": 0.1, "z_max_ratio": 0.1,
+                # y_min/z_min inherit GUI leftovers in the recording
+                # (delta-state) — reproduced for fidelity.
+                "x_min": -1500.0, "x_max": 2500.0,
+                "y_min": 31.68325805664045, "y_max": 1000.0,
+                "z_min": -38.14357504844666, "z_max": 2000.0,
+            },
+        ],
+        "local_sizing": [
+            _face_sizing("fw-rw-whisker", 5.0, ["front-wing", "rear-wing", "whisker"]),
+            _face_sizing("trailing-edges", 0.25, ["trailing-edges"]),
+            _face_sizing("undertray", 2.5, ["undertray"]),
+            _face_sizing("chassis", 10.0, ["chassis"]),
+            _face_sizing("wheels", 10.0, ["front-left-wheel", "rear-left-wheel"]),
+        ],
+        "volume_mesh": {
+            "max_cell_length": 0.15,
+            "growth_rate": 1.2,
+            "first_layer_height_mm": None,
+            "first_layer_height": 5e-05,
+            "num_layers": 6,
+            "bl_growth_rate": 1.2,
+            "prism_labels": [
+                "chassis", "front-left-wheel", "front-wing", "rear-left-wheel",
+                "rear-wing", "suspension", "trailing-edges", "undertray", "whisker",
+            ],
+            "fill": "poly-hexcore",
+            "hex_max_cell_length": 32.0,
+        },
+    },
 }
 
 
