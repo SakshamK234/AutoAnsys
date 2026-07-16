@@ -116,6 +116,44 @@ Open at probe20: probes 18/19 meshed only the wing **solid** (region table =
 arrive as per-face `zone0:NNN` wall zones. Probe20 adds `Identify Regions`
 (fluid material point at the enclosure centroid) to extract the tunnel fluid.
 
+## ✅ COMPONENT PATH ACCEPTANCE — PASSED (job 6388127, 2026-07-16)
+
+Pure production artifacts (JournalGenerator journal + slurm template run.sh,
+zero hand edits) ran end-to-end on ARC: **Fluent exit 0 → JOB_COMPLETE** in
+1 m 48 s. Produced: converged `forces.csv` (drag 63.98 N, downforce 163.63 N —
+bit-identical across runs), `setup.cas.h5`, `result.cas.h5` + `result.dat.h5`,
+and all four contour PNGs. The wing component pipeline is validated:
+geometry file → mesh (2 m) → named boundaries → solve (2 m) → forces →
+coefficients → pictures, no manual steps.
+
+Solver-journal 2025R1 TUI facts (probes 6380260–6388066), all in templates:
+- pressure-outlet: `gauge-pressure` (not `pgauge`).
+- `/solve/set/p-v-coupling` takes numeric enums (24=Coupled); discretization
+  schemes take numeric indices (pressure 12, upwind 1) — names abort.
+- moment report def: `mom-center … mom-axis …` (not moment-vector).
+- `report-files/add … report-type iteration` invalid → residuals from transcript.
+- `/solve/convergence-conditions/add …` invalid — correct syntax undiscovered;
+  iterate-N is the stop, plateau judged in post.
+- Same-name write-case then write-case-data → overwrite prompt desyncs the
+  journal (data file silently lost) → distinct `setup.cas.h5`/`result.cas.h5`.
+- Re-running a case whose report-files already exist → append y/n prompt →
+  fresh unique workspaces matter (the pipeline already guarantees this).
+- **Pictures need `-gu -driver null`** — under `-g` the graphics subsystem is
+  absent and `display save-picture` does not exist.
+- TUI menu state persists across journal lines; leading `/` resolves RELATIVE
+  after entering a menu → all display commands go via
+  `(ti-menu-load-string "…")` (stateless, root-anchored).
+- Contours are display objects: `display objects create contour <n> field <f>
+  surfaces-list <s> () quit` → `display objects display <n>` →
+  `display save-picture "<file>"`. Iso-surface arg order
+  `surface iso-surface z-coordinate midplane-z () () 0 ()` validated.
+
+Full-car recon (fc1, job 6388074): the V0.1 STEP imports clean with NAMED
+per-component objects — `bounding_box`, `wheels.1–4`, `chassis.1–6`,
+`cfd-wing-front.1/2`, `undertray`, `suspension*` — so the car reuses the wing
+recipe with name-based wheel BCs and per-component merges. **Full-car meshing
+is HELD pending maintainer go-ahead.**
+
 ## Sizing + resources for the FT/VWT mesh (probes 6377252–6378056)
 
 - **Sizing API**: `Choose Mesh Control Options` (`ReadOrCreate: 'Create new'`,
