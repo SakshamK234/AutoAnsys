@@ -116,6 +116,30 @@ Open at probe20: probes 18/19 meshed only the wing **solid** (region table =
 arrive as per-face `zone0:NNN` wall zones. Probe20 adds `Identify Regions`
 (fluid material point at the enclosure centroid) to extract the tunnel fluid.
 
+## Sizing + resources for the FT/VWT mesh (probes 6377252–6378056)
+
+- **Sizing API**: `Choose Mesh Control Options` (`ReadOrCreate: 'Create new'`,
+  `CreationMethod: 'Custom'`, `GlobalMin/GlobalMax/GlobalGrowthRate`) + scoped
+  controls via **`Add Local Sizing` (AddLocalSizingFTM) children** with
+  `LocalSizeControlParameters: {SizingType: curvature|proximity|soft|boi,
+  MinSize, MaxSize, GrowthRate, CurvatureNormalAngle (default 18), CellsPerGap}`
+  — then **`Compute Size Field(s)`** (`ComputeSizeFieldControl: 'yes'`) writes
+  the `.sf` files the wrap requires. Executing `Size Controls Table` directly
+  rejects (it wants pre-existing entries); ALS is the intended API.
+- Without CSF, `Generate the Surface Mesh` fails with
+  `ftm-wf-out-<file>-target.sf not found`.
+- Default (bbox-derived) sizing wraps but produces sliver faces on the thin
+  wing → "Mesh topology corrupted (v-m-v-w)" (probe 6377117).
+- **Memory**: the 2 mm size-field wrap OOM-killed a 64 GB allocation
+  (`oom_kill` in probe 6377338); FTM wrap needs full-node memory even at modest
+  rank counts → meshing jobs should request ~243 GB.
+- The size-field build runs many minutes with **no stdout** (Fluent buffers when
+  redirected) — a silent log is not a hang; budget the wrap ≥1–2 h at 2 mm.
+- **Anti-zombie guard** (probe22+): run fluent in background, poll the log for
+  "An error or interrupt occurred while reading the journal", kill on match —
+  turns 40-min idle burns into ~10 s failures. Adopted for the production
+  sbatch template.
+
 More %py-exec ground rules learned:
 - `meshing_utilities.get_objects(filter='*')` (documented form) works; bare
   `get_objects()` raises and **any datamodel exception aborts the journal even

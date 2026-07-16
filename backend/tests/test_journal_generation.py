@@ -228,12 +228,29 @@ def test_per_profile_mesh_workflow():
     assert "Fault-tolerant Meshing" in full
 
 
-@pytest.mark.parametrize("profile", PROFILES)
-def test_prism_layer_count_from_config(profile: str):
+def test_prism_layer_count_from_config():
     # AUDIT C6: volume_mesh.num_layers must reach the Add Boundary Layers task
-    # (it was previously ignored).
-    mesh = render_profile_artifacts(profile)["mesh_only.jou"]
+    # in the WATERTIGHT path (it was previously ignored). The fault-tolerant/VWT
+    # path currently uses the ARC-proven bare 'Generate Boundary Layers' —
+    # wiring num_layers there needs the FTM Add Boundary Layers child pattern,
+    # which is a flagged cluster-validation item (docs/CLUSTER_FINDINGS.md).
+    mesh = render_profile_artifacts("individual_part")["mesh_only.jou"]
     assert "'NumberOfLayers': 15" in mesh
+
+
+def test_ft_template_uses_proven_vwt_sequence():
+    # The FT journal must carry the ARC-proven sequence (probes 6372187-6378056).
+    mesh = render_profile_artifacts("full_car")["mesh_only.jou"]
+    for line in (
+        "PartManagement.InputFileChanged",
+        "PMFileManagement.FileManager.LoadFiles()",
+        "'ModelingObjective': r'Virtual Wind Tunnel'",
+        "'CreationMethod': r'Use existing boundary'",
+        "'MptMethodType': r'Centroid of Objects'",
+        "'ComputeSizeFieldControl': r'yes'",
+        "Generate Boundary Layers",
+    ):
+        assert line in mesh, f"proven VWT step missing: {line}"
 
 
 def test_first_layer_height_opt_in():

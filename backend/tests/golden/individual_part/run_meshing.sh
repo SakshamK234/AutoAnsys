@@ -76,8 +76,23 @@ echo "Launch: fluent 3ddp ${FLUENT_MODE_FLAG} -g -t${NCORES} ${MPI_FLAGS} -i aut
 # License is provided by `module load ANSYS/2025R1` (F6). Override here only
 # if your site needs explicit servers, e.g.:
 #   export ANSYSLMD_LICENSE_FILE=<port@host>
-fluent 3ddp ${FLUENT_MODE_FLAG} -g -t${NCORES} ${MPI_FLAGS} -i autoansys.jou 2>&1 | tee fluent.log
-FLUENT_EXIT=${PIPESTATUS[0]}
+#
+# Anti-zombie guard (verified on ARC, docs/CLUSTER_FINDINGS.md): after a journal
+# error Fluent does NOT exit — it idles at the prompt until walltime. Run it in
+# the background and kill it within seconds of the abort marker appearing.
+fluent 3ddp ${FLUENT_MODE_FLAG} -g -t${NCORES} ${MPI_FLAGS} -i autoansys.jou > fluent.log 2>&1 &
+FLUENT_PID=$!
+while kill -0 $FLUENT_PID 2>/dev/null; do
+    if grep -q "An error or interrupt occurred while reading the journal" fluent.log 2>/dev/null; then
+        echo "JOURNAL_ABORT_DETECTED — killing Fluent (journal error left it idling)"
+        sleep 5
+        kill $FLUENT_PID 2>/dev/null
+        break
+    fi
+    sleep 15
+done
+wait $FLUENT_PID
+FLUENT_EXIT=$?
 echo "Fluent exit code: $FLUENT_EXIT"
 if [ $FLUENT_EXIT -ne 0 ]; then
     echo "FLUENT_FAILED (exit code $FLUENT_EXIT)"
