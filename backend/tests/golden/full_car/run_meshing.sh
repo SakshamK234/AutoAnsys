@@ -65,14 +65,14 @@ cat "$HOSTFILE"
 #                        mode so /define/... TUI paths exist. Without this
 #                        Fluent stays in meshing mode and rejects
 #                        /define/boundary-conditions/... as "invalid command".
-FLUENT_MODE_FLAG="-meshing"
+FLUENT_MODE_FLAG="-meshing -g"
 
 # Parallel transport (F6: Intel MPI + InfiniBand on TinkerCliffs; config-driven).
 # interconnect: infiniband -> -pib, ethernet -> -peth, anything else -> omitted.
 MPI_FLAGS="-mpi=intel -pib -cnf=$HOSTFILE"
 
 echo "=== Fluent Start ($(date)) — start_mode=meshing ==="
-echo "Launch: fluent 3ddp ${FLUENT_MODE_FLAG} -g -t${NCORES} ${MPI_FLAGS} -i autoansys.jou"
+echo "Launch: fluent 3ddp ${FLUENT_MODE_FLAG} -t${NCORES} ${MPI_FLAGS} -i autoansys.jou"
 # License is provided by `module load ANSYS/2025R1` (F6). Override here only
 # if your site needs explicit servers, e.g.:
 #   export ANSYSLMD_LICENSE_FILE=<port@host>
@@ -80,7 +80,7 @@ echo "Launch: fluent 3ddp ${FLUENT_MODE_FLAG} -g -t${NCORES} ${MPI_FLAGS} -i aut
 # Anti-zombie guard (verified on ARC, docs/CLUSTER_FINDINGS.md): after a journal
 # error Fluent does NOT exit — it idles at the prompt until walltime. Run it in
 # the background and kill it within seconds of the abort marker appearing.
-fluent 3ddp ${FLUENT_MODE_FLAG} -g -t${NCORES} ${MPI_FLAGS} -i autoansys.jou > fluent.log 2>&1 &
+fluent 3ddp ${FLUENT_MODE_FLAG} -t${NCORES} ${MPI_FLAGS} -i autoansys.jou > fluent.log 2>&1 &
 FLUENT_PID=$!
 while kill -0 $FLUENT_PID 2>/dev/null; do
     if grep -q "An error or interrupt occurred while reading the journal" fluent.log 2>/dev/null; then

@@ -110,12 +110,15 @@ def test_slurm_scripts_are_well_formed(profile: str):
 
 
 def test_slurm_start_mode_controls_meshing_flag():
+    # 2025R1 (probes 6388030/6388066): the solver stage must launch with
+    # `-gu -driver null` — with `-g` the graphics subsystem is removed and
+    # `display save-picture` does not exist, so contour export always fails.
     gen = JournalGenerator()
     slurm_cfg = example_config("individual_part")["slurm"]
     meshing = gen.generate_slurm_script(slurm_cfg, workspace="/ws", start_mode="meshing")
     solver = gen.generate_slurm_script(slurm_cfg, workspace="/ws", start_mode="solver")
-    assert 'FLUENT_MODE_FLAG="-meshing"' in meshing
-    assert 'FLUENT_MODE_FLAG=""' in solver
+    assert 'FLUENT_MODE_FLAG="-meshing -g"' in meshing
+    assert 'FLUENT_MODE_FLAG="-gu -driver null"' in solver
 
 
 def test_slurm_rejects_invalid_start_mode():

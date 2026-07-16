@@ -231,65 +231,43 @@ yes
 ; PHASE 4: POST-PROCESSING — Contour Images (shared partial)
 ; ══════════════════════════════════════════════════════════════════════
 ; ════════════════════════════════════════════════════════════════════════
-; SHARED CONTOUR / POST-PROCESSING BLOCK
-; Included by solver_from_case.jou.j2 and mesh_watertight.jou.j2.
+; SHARED CONTOUR / POST-PROCESSING BLOCK — 2025R1-validated (probe 6388066).
 ;
-; The contour-surface zone names are derived here from the configured BCs, so
-; both journals always have them defined. The combined journal previously
-; referenced undefined  /  / 
-; and rendered empty `surfaces  ()` selections (AUDIT C7).
+; Idiom notes (all verified live on ARC):
+; • Requires the solver stage to launch with `-gu -driver null` — with `-g`
+;   the graphics subsystem is absent and `display save-picture` does not exist.
+; • Every command goes through (ti-menu-load-string "...") — TUI menu state
+;   persists across journal lines and leading `/` resolves RELATIVE to the
+;   current menu, so bare paths desync after any menu-entering command.
+; • Contours are display OBJECTS (`display objects create contour ...`) — the
+;   legacy /display/set/contours/* menu no longer exists.
 ; ════════════════════════════════════════════════════════════════════════
 
 
-; ── Picture driver setup (offscreen PNG for batch mode) ───────────────
-; 2025R1: `use-window-resolution` is not a valid command (probe 6380410) —
-; x/y-resolution alone control offscreen PNG size in batch.
-/display/set/picture/driver png
-/display/set/picture/x-resolution 1920
-/display/set/picture/y-resolution 1080
-/display/set/picture/color-mode color
+(ti-menu-load-string "display set picture driver png")
+(ti-menu-load-string "display set picture x-resolution 1920")
+(ti-menu-load-string "display set picture y-resolution 1080")
 
-; ── Mid-plane cross-section (Z=0) for flow-field views ────────────────
-; TUI, not %py-exec: the ARC diagnostic (solver-4917231.out, 2026-03-31) shows
-; NO `solver` Python global exists after switch-to-solution-mode, so the old
-; `solver.results.surfaces.iso_surface[...]` line always raised NameError and
-; the midplane surface was never created.
-; [needs-cluster] verify the iso-surface TUI arg order on the first real run.
-/surface/iso-surface z-coordinate midplane-z () () 0 ()
+; Mid-plane cross-section (Z=0) for flow-field views (validated arg order).
+(ti-menu-load-string "surface iso-surface z-coordinate midplane-z () () 0 ()")
 
-/display/set/contours/filled? yes
-/display/set/contours/node-values? yes
+(ti-menu-load-string "display objects create contour cont-velocity field velocity-magnitude surfaces-list midplane-z () quit")
+(ti-menu-load-string "display objects display cont-velocity")
+(ti-menu-load-string "display save-picture \"/scratch/<user>/autoansys/jobs/<individual_part_job>/contour_velocity_midplane.png\"")
 
-/display/set/contours/surfaces inlet outlet ground ()
-/display/contour velocity velocity-magnitude
-/display/save-picture "/scratch/<user>/autoansys/jobs/<individual_part_job>/contour_velocity.png"
+(ti-menu-load-string "display objects create contour cont-pressure field pressure surfaces-list midplane-z () quit")
+(ti-menu-load-string "display objects display cont-pressure")
+(ti-menu-load-string "display save-picture \"/scratch/<user>/autoansys/jobs/<individual_part_job>/contour_pressure_midplane.png\"")
 
-/display/set/contours/surfaces midplane-z ()
-/display/contour velocity velocity-magnitude
-/display/save-picture "/scratch/<user>/autoansys/jobs/<individual_part_job>/contour_velocity_midplane.png"
+(ti-menu-load-string "display objects create contour cont-tke field turb-kinetic-energy surfaces-list midplane-z () quit")
+(ti-menu-load-string "display objects display cont-tke")
+(ti-menu-load-string "display save-picture \"/scratch/<user>/autoansys/jobs/<individual_part_job>/contour_tke_midplane.png\"")
 
-/display/set/contours/surfaces inlet outlet ground ()
-/display/contour pressure static-pressure
-/display/save-picture "/scratch/<user>/autoansys/jobs/<individual_part_job>/contour_pressure.png"
-
-/display/set/contours/surfaces midplane-z ()
-/display/contour pressure static-pressure
-/display/save-picture "/scratch/<user>/autoansys/jobs/<individual_part_job>/contour_pressure_midplane.png"
-
-/display/set/contours/surfaces inlet outlet ground ()
-/display/contour pressure total-pressure
-/display/save-picture "/scratch/<user>/autoansys/jobs/<individual_part_job>/contour_total_pressure.png"
-
-/display/set/contours/surfaces * ()
-/display/contour pressure pressure-coefficient
-/display/save-picture "/scratch/<user>/autoansys/jobs/<individual_part_job>/contour_cp.png"
-
-/display/contour wall-fluxes wall-shear-stress
-/display/save-picture "/scratch/<user>/autoansys/jobs/<individual_part_job>/contour_wall_shear.png"
-
-/display/set/contours/surfaces midplane-z ()
-/display/contour turb-kinetic-energy k
-/display/save-picture "/scratch/<user>/autoansys/jobs/<individual_part_job>/contour_tke_midplane.png"
+; Pressure coefficient on the body walls. [needs-cluster] wildcard patterns in
+; surfaces-list are unverified — works with a concrete merged body zone name.
+(ti-menu-load-string "display objects create contour cont-cp field pressure-coefficient surfaces-list wall-body* () quit")
+(ti-menu-load-string "display objects display cont-cp")
+(ti-menu-load-string "display save-picture \"/scratch/<user>/autoansys/jobs/<individual_part_job>/contour_cp.png\"")
 
 ; ── Done ──────────────────────────────────────────────────────────────
 /exit yes
