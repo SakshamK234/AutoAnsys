@@ -16,22 +16,31 @@ schema default). Schema: `backend/app/schemas/job.py`.
 
 | Field | Default | Notes |
 |---|---|---|
-| `workflow` | `watertight` | `watertight` (clean parts) or `fault-tolerant` (dirty full-car wrap). Profile-driven. |
+| `workflow` | `watertight` | Both profiles default to `watertight` (wing SOP path / specialist full-car recipe). `fault-tolerant` (wrap) stays available by explicit override for unlabelled dirty assemblies. |
 | `build_enclosure` | `false` | If true, build the enclosure from the part bbox instead of assuming a pre-built one (bare-part input). [needs-cluster] |
-| `surface_mesh.min_size` / `max_size` | 2.0 / 264.0 | mm (in `geometry_unit`). |
+| `surface_mesh.min_size` / `max_size` | 2.0 / 264.0 | mm (in `geometry_unit`). Full car profile: 1.0 / 50.0 (specialist). |
 | `surface_mesh.curvature_normal_angle` | 18.0 | |
 | `surface_mesh.growth_rate` | 1.2 | |
-| `volume_mesh.num_layers` | 15 | Prism layer count — now wired into Add Boundary Layers (was ignored). |
+| `volume_mesh.num_layers` | 15 | Prism layer count — now wired into Add Boundary Layers (was ignored). Full car: 6 (specialist). |
 | `volume_mesh.first_layer_height_mm` | `null` | Opt-in absolute first prism height (mm) for wall-resolved **y+ ≈ 1** (F9); ~0.02–0.05 mm at 15.65 m/s. `null` keeps the proven SOP last-ratio defaults. [needs-cluster] verify `FirstHeight` with last-ratio on 2025R1. |
 | `volume_mesh.first_layer_height` | 5e-5 | **Deprecated** — never reached Fluent; kept only so stored configs validate. |
 | `volume_mesh.bl_growth_rate` | 1.2 | |
+| `volume_mesh.prism_labels[]` | [] | Grow prisms only on these face labels (`FaceScope: selected-labels`). Empty → default wall scope. Full car: the 9 specialist body labels. |
+| `volume_mesh.fill` | `default` | `default` keeps the wing-validated Watertight fill; `poly-hexcore` = specialist full-car recipe. |
+| `volume_mesh.hex_max_cell_length` | `null` | `VolumeFillControls.HexMaxCellLength` (geometry units) for poly-hexcore. Full car: 32. |
 | `mesh_quality.surface_skewness_threshold` | 0.6 | Auto-improve surface mesh if exceeded. |
 | `mesh_quality.volume_orthogonal_quality_threshold` | 0.15 | Auto-improve volume mesh if exceeded. |
-| `mesh_quality.auto_improve` | true | |
+| `mesh_quality.auto_improve` | true | Improve Surface Mesh insertion. |
+| `mesh_quality.improve_volume` | true | Improve Volume Mesh insertion (separate — the specialist full-car journal skips it). |
+| `mesh_quality.sq_min_size` | `null` | Improve Surface Mesh `SQMinSize`; `null` → `surface_mesh.min_size`. Full car: 0.25. |
 | `geometry_unit` | `mm` | |
-| `original_zones` | inlet/outlet/ground/symmetry/walls | Face labels preserved through meshing. |
+| `original_zones` | inlet/outlet/ground/symmetry/walls | Face labels preserved through meshing (`OriginalZones` + `ExecuteShareTopology`). `null` omits both keys — required for CAD whose labels differ from the SOP names (specialist full car). |
+| `describe_setup_type` | `default` | `fluid-only` declares "only fluid regions with no voids" (CAD models the tunnel-minus-car fluid volume — specialist full car). |
+| `wall_to_internal` | `false` | Describe Geometry `WallToInternal` (pairs with `fluid-only`). |
+| `pin_cad_import_options` | `true` | `true` pins the wing-validated CadImportOptions (OneZonePer 'body' etc.); `false` sets only FileName/LengthUnit (specialist full car). |
 | `enclosure.*` | SOP mm values | Documentation/auditing of a Discovery-built enclosure. |
-| `local_sizing[]` | [] | Body-of-influence / face sizings (aero/chassis/wheels/intake/nearfield/farfield/rear_wing). |
+| `local_sizing[]` | [] | Body-of-influence / face sizings. Optional per-entry `cells_per_gap` / `curvature_normal_angle` (specialist face sizings use 1 / 18°). |
+| `refinement_regions[]` | [] | Watertight `Create Local Refinement Regions` boxes. With `labels`: ratio-relative wake box around those labels' bbox (`*_ratio`, default 0.1). Without: absolute-coordinate box. Full car: front/rear tire wakes + nearfield. |
 
 ## Solver (`SolverConfig`)
 
