@@ -239,18 +239,24 @@ def test_prism_layer_count_from_config():
 
 
 def test_ft_template_uses_proven_vwt_sequence():
-    # The FT journal must carry the ARC-proven sequence (probes 6372187-6378056).
+    # The FT journal must carry the ARC-proven sequence (probes 6372187-6379995;
+    # first complete mesh: wing_probe29.cas.h5, 222,745 cells in 2m03s).
     mesh = render_profile_artifacts("full_car")["mesh_only.jou"]
     for line in (
         "PartManagement.InputFileChanged",
         "PMFileManagement.FileManager.LoadFiles()",
         "'ModelingObjective': r'Virtual Wind Tunnel'",
         "'CreationMethod': r'Use existing boundary'",
+        "'ExtractionMethod': r'wrap'",
         "'MptMethodType': r'Centroid of Objects'",
-        "'ComputeSizeFieldControl': r'yes'",
         "Generate Boundary Layers",
     ):
         assert line in mesh, f"proven VWT step missing: {line}"
+    # Custom size controls demonstrably break the wrap (probes 6377338-6379399)
+    # — the template must ship workflow-default sizing until scoped-on-top
+    # controls are cluster-validated.
+    assert "'CreationMethod': r'Custom'" not in mesh
+    assert "ComputeSizeFieldControl" not in mesh
 
 
 def test_first_layer_height_opt_in():
