@@ -18,8 +18,11 @@
 (display "=== ZONE LIST ===")(newline)
 /define/boundary-conditions/list-zones
 
-; ── Safety net: enclosure cell zone must be fluid ───────────────────
-/define/boundary-conditions/zone-type enclosure fluid
+; ── Safety net: SOP-path enclosure cell zone must be fluid ──────────
+; ti-menu-load-string is error-resilient: on VWT meshes (fluid zone is
+; `tunnel-fluid`, no `enclosure` zone) this logs an error and continues,
+; whereas the bare TUI line would abort the journal (probe 6380260 class).
+(ti-menu-load-string "/define/boundary-conditions/zone-type enclosure fluid")
 
 ; ── Reference values, turbulence model, all BCs (shared partial) ─────
 ; ════════════════════════════════════════════════════════════════════════
@@ -64,19 +67,25 @@
 /define/boundary-conditions/zone-type walls wall
 
 ; ── Pressure outlets ─────────────────────────────────────────────────
+; 2025R1: the parameter is `gauge-pressure` — `pgauge` is rejected as an
+; invalid command (verified on ARC, probe 6380260).
 /define/boundary-conditions/zone-type outlet pressure-outlet
-/define/boundary-conditions/set/pressure-outlet outlet () pgauge no 0.0 quit
+/define/boundary-conditions/set/pressure-outlet outlet () gauge-pressure no 0.0 quit
 
 ; ── Symmetry planes ──────────────────────────────────────────────────
 /define/boundary-conditions/zone-type symmetry symmetry
 
-; ── Solution Methods ─────────────────────────────────────────────────
-/solve/set/p-v-coupling Coupled
-/solve/set/gradient-scheme least-squares-cell-based
-/solve/set/discretization-scheme/pressure second-order
-/solve/set/discretization-scheme/mom second-order-upwind
-/solve/set/discretization-scheme/k second-order-upwind
-/solve/set/discretization-scheme/omega second-order-upwind
+; ── Solution Methods (2025R1-validated TUI, probes 6380286–6380410) ────
+; The TUI takes NUMERIC enums, not names ("Coupled"/"second-order" raise
+; "unbound variable"/"Invalid integer" and abort the journal). Config keeps the
+; human-readable names; this partial maps them.
+/solve/set/p-v-coupling 24
+; gradient-scheme: left at the case default (least-squares cell based) — the
+; TUI form is a yes/no prompt pair; [needs-cluster] wire if a non-default is needed.
+/solve/set/discretization-scheme/pressure 12
+/solve/set/discretization-scheme/mom 1
+/solve/set/discretization-scheme/k 1
+/solve/set/discretization-scheme/omega 1
 
 ; ── Report definitions, report files, convergence (shared partial) ───
 ; ════════════════════════════════════════════════════════════════════════
@@ -96,21 +105,27 @@
 
 
 ; ── Report Definitions (body-scoped forces; AUDIT C2/C3) ──────────────
+; 2025R1-validated (probes 6380332/6380354): force defs take force-vector +
+; thread-names; the MOMENT def takes `mom-center` + `mom-axis` (the older
+; `moment-vector`/`moment-center` pair is rejected).
 /solve/report-definitions/add drag_force force force-vector 1 0 0 thread-names wall-body* () quit
 /solve/report-definitions/add lift_force force force-vector 0 0 1 thread-names wall-body* () quit
-/solve/report-definitions/add mom_y moment moment-vector 0 1 0 moment-center 0.0 0.0 0.0 thread-names wall-body* () quit
+/solve/report-definitions/add mom_y moment mom-center 0.0 0.0 0.0 mom-axis 0 1 0 thread-names wall-body* () quit
 
 ; ── Report Files ──────────────────────────────────────────────────────
+; Residuals: `report-files/add ... report-type iteration` is NOT valid 2025R1
+; TUI (probe 6380354) — residual history is parsed from the transcript
+; (fluent.log) instead; the tolerant parser (app/post/report_files.py) handles it.
 /solve/report-files/add forces-report report-defs drag_force lift_force mom_y () file-name "/scratch/<user>/autoansys/jobs/<individual_part_job>/forces.csv" print? yes quit
-/solve/report-files/add residuals-report report-type iteration file-name "/scratch/<user>/autoansys/jobs/<individual_part_job>/residuals.csv" print? yes quit
 
 ; ── Convergence Monitors ──────────────────────────────────────────────
 /solve/monitors/residual/convergence-criteria 0.0001 0.0001 0.0001 0.0001 0.0001 0.0001
-; Force-plateau convergence (AUDIT C5): stop early once the drag-force report
-; settles. The fixed `/solve/iterate N` below remains the hard upper bound, so if
-; this condition is mis-specified the run still terminates at N iterations.
-; [needs-cluster] verify the /solve/convergence-conditions TUI arg order on 2025R1.
-/solve/convergence-conditions/add drag-converged report-def drag_force stop-criterion 0.001 initial-values-to-ignore 75 previous-values-to-consider 100 print? yes () quit
+; Force-plateau convergence (AUDIT C5): the guessed
+; `/solve/convergence-conditions/add ...` phrase is NOT valid 2025R1 TUI
+; (probe 6380382: invalid command "add"). Until the correct syntax is
+; discovered (help-dump probe pending), the fixed `/solve/iterate N` below is
+; the stop condition — convergence is then judged from the forces.csv plateau
+; in post-processing. config: convergence.use_force_convergence reserved.
 
 ; ── Initialize ───────────────────────────────────────────────────────
 /solve/init/hyb-init
@@ -139,10 +154,11 @@
 
 
 ; ── Picture driver setup (offscreen PNG for batch mode) ───────────────
+; 2025R1: `use-window-resolution` is not a valid command (probe 6380410) —
+; x/y-resolution alone control offscreen PNG size in batch.
 /display/set/picture/driver png
 /display/set/picture/x-resolution 1920
 /display/set/picture/y-resolution 1080
-/display/set/picture/use-window-resolution no
 /display/set/picture/color-mode color
 
 ; ── Mid-plane cross-section (Z=0) for flow-field views ────────────────

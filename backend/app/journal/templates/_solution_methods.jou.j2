@@ -1,0 +1,19 @@
+; ── Solution Methods (2025R1-validated TUI, probes 6380286–6380410) ────
+; The TUI takes NUMERIC enums, not names ("Coupled"/"second-order" raise
+; "unbound variable"/"Invalid integer" and abort the journal). Config keeps the
+; human-readable names; this partial maps them.
+{% set sm = solver.solution_methods %}
+{% set pv_map = {"Coupled": 24, "SIMPLE": 20, "SIMPLEC": 21, "PISO": 22} %}
+{% set p_map = {"standard": 10, "second-order": 12, "presto!": 14, "linear": 11, "body-force-weighted": 13, "Second Order": 12} %}
+{% set up_map = {"first-order-upwind": 0, "second-order-upwind": 1, "First Order Upwind": 0, "Second Order Upwind": 1} %}
+/solve/set/p-v-coupling {{ pv_map.get(sm.scheme | default("Coupled"), 24) }}
+; gradient-scheme: left at the case default (least-squares cell based) — the
+; TUI form is a yes/no prompt pair; [needs-cluster] wire if a non-default is needed.
+/solve/set/discretization-scheme/pressure {{ p_map.get(sm.pressure | default("second-order"), 12) }}
+/solve/set/discretization-scheme/mom {{ up_map.get(sm.momentum | default("second-order-upwind"), 1) }}
+/solve/set/discretization-scheme/k {{ up_map.get(sm.turbulent_kinetic_energy | default("second-order-upwind"), 1) }}
+{% if solver.turbulence.model == "k-omega-sst" %}
+/solve/set/discretization-scheme/omega {{ up_map.get(sm.specific_dissipation_rate | default("second-order-upwind"), 1) }}
+{% elif solver.turbulence.model == "k-epsilon-realizable" %}
+/solve/set/discretization-scheme/epsilon {{ up_map.get(sm.specific_dissipation_rate | default("second-order-upwind"), 1) }}
+{% endif %}

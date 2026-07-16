@@ -117,24 +117,14 @@ yes
 /define/boundary-conditions/list-zones
 
 ; ── Safety net: force enclosure cell zone to fluid ────────────────────
-; If Discovery exported the enclosure as a solid body, flip it here.
-; (If it's already fluid, Fluent will no-op or complain harmlessly.)
-/define/boundary-conditions/zone-type enclosure fluid
+; If Discovery exported the enclosure as a solid body, flip it here. Wrapped
+; in ti-menu-load-string so a missing zone logs an error without aborting.
+(ti-menu-load-string "/define/boundary-conditions/zone-type enclosure fluid")
 
 ; ── Reference values, turbulence model, all BCs (shared partial) ─────
 {% include '_bc_block.jou.j2' %}
 
-; ── Solution Methods ──────────────────────────────────────────────────
-/solve/set/p-v-coupling {{ solver.solution_methods.scheme | default("Coupled") }}
-/solve/set/gradient-scheme {{ solver.solution_methods.gradient | default("Least Squares Cell Based") }}
-/solve/set/discretization-scheme/pressure {{ solver.solution_methods.pressure | default("Second Order") }}
-/solve/set/discretization-scheme/mom {{ solver.solution_methods.momentum | default("Second Order Upwind") }}
-/solve/set/discretization-scheme/k {{ solver.solution_methods.turbulent_kinetic_energy | default("Second Order Upwind") }}
-{% if solver.turbulence.model == "k-omega-sst" %}
-/solve/set/discretization-scheme/omega {{ solver.solution_methods.specific_dissipation_rate | default("Second Order Upwind") }}
-{% elif solver.turbulence.model == "k-epsilon-realizable" %}
-/solve/set/discretization-scheme/epsilon {{ solver.solution_methods.specific_dissipation_rate | default("Second Order Upwind") }}
-{% endif %}
+{% include '_solution_methods.jou.j2' %}
 
 ; ══════════════════════════════════════════════════════════════════════
 ; PHASE 3: SOLVER RUN

@@ -65,6 +65,12 @@ def parse_report_file(text: str) -> list[dict]:
 
     for line in text.splitlines():
         stripped = line.strip()
+        # Real 2025R1 report files (ARC probe 6380410) carry the true header as
+        # a paren-wrapped list of quoted names: ("Iteration" "drag_force" ...).
+        # Unwrap it into a header candidate instead of skipping it as a comment.
+        if stripped.startswith("(") and '"' in stripped:
+            stripped = stripped.strip("()").strip()
+            line = stripped
         if not stripped or stripped.startswith(_COMMENT_PREFIXES):
             continue
 

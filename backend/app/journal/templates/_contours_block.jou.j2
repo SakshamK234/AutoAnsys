@@ -14,10 +14,11 @@
 {% set ground_zone = (bc.translating_walls[0].zone_name if bc.translating_walls else 'ground') %}
 
 ; ── Picture driver setup (offscreen PNG for batch mode) ───────────────
+; 2025R1: `use-window-resolution` is not a valid command (probe 6380410) —
+; x/y-resolution alone control offscreen PNG size in batch.
 /display/set/picture/driver png
 /display/set/picture/x-resolution 1920
 /display/set/picture/y-resolution 1080
-/display/set/picture/use-window-resolution no
 /display/set/picture/color-mode color
 
 ; ── Mid-plane cross-section (Z=0) for flow-field views ────────────────

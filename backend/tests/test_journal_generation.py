@@ -155,11 +155,20 @@ def test_forces_are_body_scoped_not_wildcard(profile: str, journal: str):
 
 
 @pytest.mark.parametrize("profile", PROFILES)
-def test_force_plateau_convergence_emitted(profile: str):
-    # AUDIT C5: the force-monitor window/tolerance are now wired into convergence.
+def test_force_plateau_line_not_emitted(profile: str):
+    # AUDIT C5 status after ARC validation (probe 6380382): the guessed
+    # /solve/convergence-conditions/add phrase is invalid 2025R1 TUI and aborts
+    # the journal. Until the real syntax is discovered, the template must NOT
+    # emit it — /solve/iterate N is the stop; the plateau is judged from
+    # forces.csv in post-processing (probe 6380410 shows textbook plateaus).
     content = render_profile_artifacts(profile)["solver_from_case.jou"]
-    assert "/solve/convergence-conditions/add" in content
-    assert "report-def drag_force" in content
+    cmds = "\n".join(
+        ln for ln in content.splitlines() if ln.strip() and not ln.strip().startswith(";")
+    )
+    assert "/solve/convergence-conditions/add" not in cmds
+    # The validated force report definitions must still be present.
+    assert "report-definitions/add drag_force force force-vector" in cmds
+    assert "mom-center" in cmds and "mom-axis" in cmds
 
 
 @pytest.mark.parametrize("profile", PROFILES)

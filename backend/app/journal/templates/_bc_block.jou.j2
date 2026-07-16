@@ -63,9 +63,11 @@
 {% endfor %}
 
 ; ── Pressure outlets ─────────────────────────────────────────────────
+; 2025R1: the parameter is `gauge-pressure` — `pgauge` is rejected as an
+; invalid command (verified on ARC, probe 6380260).
 {% for o in bc.pressure_outlets %}
 /define/boundary-conditions/zone-type {{ o.zone_name }} pressure-outlet
-/define/boundary-conditions/set/pressure-outlet {{ o.zone_name }} () pgauge no {{ o.gauge_pressure }} quit
+/define/boundary-conditions/set/pressure-outlet {{ o.zone_name }} () gauge-pressure no {{ o.gauge_pressure }} quit
 {% endfor %}
 
 ; ── Symmetry planes ──────────────────────────────────────────────────
