@@ -140,6 +140,31 @@ arrive as per-face `zone0:NNN` wall zones. Probe20 adds `Identify Regions`
   turns 40-min idle burns into ~10 s failures. Adopted for the production
   sbatch template.
 
+## Automated boundary assignment (probes 6380058–6380198) — SOLVED
+
+`wing_probe33.cas.h5` is a **named, typed, solver-ready case** (222,745 cells):
+`inlet` (velocity-inlet), `outlet` (pressure-outlet), `ground`, `farfield-1..3`,
+and all 19 wing patches merged into one `wing` wall. Mechanism (all in-run,
+zero manual steps):
+
+1. `meshing_utilities.get_face_zones(filter='zone0*')` → **int zone IDs**.
+2. Per-zone areas via `get_face_zone_area(face_zone_id_list=[id])` (kwarg name
+   matters; returns a single float total) → 6 largest = box faces.
+3. `get_bounding_box_of_zone_list(zone_id_list=[id])` → 6-float extents (mm) →
+   thin-axis classification; x-faces → inlet/outlet chosen by wing proximity
+   (SOP box is short in front / long behind); **z=0 floor exists → `ground`**
+   (z is up in the team's exports); remaining → farfield.
+4. Python writes the rename/merge/type commands as a **Scheme file** of
+   `(ti-menu-load-string "...")` lines; after `switch-to-solution-mode`,
+   `(load "...")` executes them. (`/file/read-journal` inline args do NOT parse
+   — it prompts for a list and swallows the next journal line; probe 6380144.)
+5. `modify-zones/zone-name <id> <name>` and `merge-zones <ids> ()` accept
+   numeric zone IDs directly — no name lookup needed.
+
+This resolves **F3 with evidence**: the body wall pattern for force reports is
+the merged `wing` zone (assembly meshes should merge per-component for
+per-component force breakdowns later).
+
 More %py-exec ground rules learned:
 - `meshing_utilities.get_objects(filter='*')` (documented form) works; bare
   `get_objects()` raises and **any datamodel exception aborts the journal even
