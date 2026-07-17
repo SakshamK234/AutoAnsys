@@ -54,25 +54,21 @@
 
 ; ── Rotating walls (wheels) ──────────────────────────────────────────
 ; TUI: zone yes motion-bc-moving no no yes yes no no 0. no 0.5 no <ω> <ox> <oy> <oz> <ax> <ay> <az>
-/define/boundary-conditions/zone-type front-tire wall
-/define/boundary-conditions/wall front-tire yes motion-bc-moving no no yes yes no no 0. no 0.5 no 77.0 0.8264 0.6125 0.1998 0.0 1.0 0.0
-/define/boundary-conditions/zone-type rear-tire wall
-/define/boundary-conditions/wall rear-tire yes motion-bc-moving no no yes yes no no 0. no 0.5 no 77.0 -0.7056 0.6125 0.1998 0.0 1.0 0.0
 
 ; ── Translating walls (e.g. moving ground) ───────────────────────────
 ; TUI: zone yes motion-bc-moving no no yes no no <vel> <dx> <dy> <dz> no no 0. no 0.5
-/define/boundary-conditions/zone-type ground wall
-/define/boundary-conditions/wall ground yes motion-bc-moving no no yes no no 15.65 -1.0 0.0 0.0 no no 0. no 0.5
 
 ; ── Slip / specified-shear walls (tunnel walls, contact patches) ─────
 ; TUI: zone no yes shear-bc-spec-shear no no 0. no 0.5 no 0. no 0. no 0.
-/define/boundary-conditions/zone-type tunnel-walls wall
-/define/boundary-conditions/wall tunnel-walls no yes shear-bc-spec-shear no no 0. no 0.5 no 0. no 0. no 0.
-/define/boundary-conditions/zone-type contact-patches wall
-/define/boundary-conditions/wall contact-patches no yes shear-bc-spec-shear no no 0. no 0.5 no 0. no 0. no 0.
+/define/boundary-conditions/zone-type farfield-top wall
+/define/boundary-conditions/wall farfield-top no yes shear-bc-spec-shear no no 0. no 0.5 no 0. no 0. no 0.
+/define/boundary-conditions/zone-type farfield-side wall
+/define/boundary-conditions/wall farfield-side no yes shear-bc-spec-shear no no 0. no 0.5 no 0. no 0. no 0.
 
 ; ── Stationary no-slip walls ─────────────────────────────────────────
 ; Default Fluent wall behaviour; we just pin the zone-type explicitly.
+/define/boundary-conditions/zone-type car wall
+/define/boundary-conditions/zone-type car-shell wall
 
 ; ── Pressure outlets ─────────────────────────────────────────────────
 ; 2025R1: the parameter is `gauge-pressure` — `pgauge` is rejected as an
@@ -116,9 +112,9 @@
 ; 2025R1-validated (probes 6380332/6380354): force defs take force-vector +
 ; thread-names; the MOMENT def takes `mom-center` + `mom-axis` (the older
 ; `moment-vector`/`moment-center` pair is rejected).
-/solve/report-definitions/add drag_force force force-vector 1 0 0 thread-names wall-body* () quit
-/solve/report-definitions/add lift_force force force-vector 0 0 1 thread-names wall-body* () quit
-/solve/report-definitions/add mom_y moment mom-center 0.0 0.0 0.0 mom-axis 0 1 0 thread-names wall-body* () quit
+/solve/report-definitions/add drag_force force force-vector 1 0 0 thread-names car car-shell () quit
+/solve/report-definitions/add lift_force force force-vector 0 0 1 thread-names car car-shell () quit
+/solve/report-definitions/add mom_y moment mom-center 0.0 0.0 0.0 mom-axis 0 1 0 thread-names car car-shell () quit
 
 ; ── Report Files ──────────────────────────────────────────────────────
 ; Residuals: `report-files/add ... report-type iteration` is NOT valid 2025R1
@@ -205,7 +201,7 @@
 (ti-menu-load-string "display save-picture \"/scratch/<user>/autoansys/jobs/<full_car_job>/contour_tke_midplane.png\"")
 
 ; Pressure coefficient on the body walls.
-(ti-menu-load-string "display objects create contour cont-cp field pressure-coefficient surfaces-list wall-body* () quit")
+(ti-menu-load-string "display objects create contour cont-cp field pressure-coefficient surfaces-list car car-shell () quit")
 (ti-menu-load-string "display objects display cont-cp")
 (ti-menu-load-string "display save-picture \"/scratch/<user>/autoansys/jobs/<full_car_job>/contour_cp.png\"")
 

@@ -24,6 +24,35 @@
 (%py-exec "workflow.TaskObject['Import CAD and Part Management'].Execute()")
 (display "IMPORT_DONE")(newline)
 
+{% for body in mesh.delete_bodies | default([]) %}
+; ── Remove junk CAD body '{{ body }}' before Describe/CEFB ────────────
+; The V0.4 export packs a redundant 'bounding_box' body that wraps into a
+; sealed crate around the car (fc11: wings never touch the flow). Delete it.
+; ONE attempt only + assert — a redundant second /objects/delete on the
+; then-missing object ABORTS the journal (fc12; ti-menu errors are not
+; always non-fatal).
+(ti-menu-load-string "/objects/delete {{ body }} ()")
+(%py-exec "objs = meshing_utilities.get_objects(filter=r'*')")
+(%py-exec "print('OBJECTS_AFTER_DELETE:', objs)")
+(%py-exec "assert not [o for o in objs if r'{{ body }}'.lower() in str(o).lower()], r'{{ body }} object still present'")
+(display "BODY_DELETED_{{ loop.index }}")(newline)
+{% endfor %}
+
+{% if mesh.prewrap_shell_split | default(false) %}
+; ── Split the fluid body's CAD shell BEFORE wrapping ─────────────────
+; The wrap rounds the tunnel box's 90° edges to a few degrees per facet, so
+; post-wrap angle separation can NEVER isolate the box faces (fc14/fc15).
+; Split the still-sharp CAD shell now; the wrap inherits source-zone
+; granularity (fc16). Zone {{ mesh.prewrap_shell_zone | default(6) }} is the
+; shell for this geometry, deterministic across imports (fc11/fc13/fc28); the
+; dimension assert guards that assumption so a wrong id fails in seconds.
+(%py-exec "_bb6 = meshing_utilities.get_bounding_box_of_zone_list(zone_id_list=[{{ mesh.prewrap_shell_zone | default(6) }}])")
+(%py-exec "print('CAD_SHELL_BB:', _bb6)")
+(%py-exec "assert (_bb6[1][0] - _bb6[0][0]) > 5000 and (_bb6[1][2] - _bb6[0][2]) > 2000, 'zone {{ mesh.prewrap_shell_zone | default(6) }} is not the tunnel shell: ' + str(_bb6)")
+(ti-menu-load-string "boundary separate sep-face-zone-by-angle {{ mesh.prewrap_shell_zone | default(6) }} 40")
+(display "CAD_SHELL_SPLIT_DONE")(newline)
+{% endif %}
+
 ; ── Describe Geometry and Flow: Virtual Wind Tunnel objective ────────
 (%py-exec "workflow.TaskObject['Describe Geometry and Flow'].Arguments.set_state({'ModelingObjective': r'Virtual Wind Tunnel'})")
 (%py-exec "workflow.TaskObject['Describe Geometry and Flow'].Execute()")
@@ -34,7 +63,10 @@
 ; ['enclosure','geom']; CEFB renames the box to 'tunnel' on execute.
 (%py-exec "objs = meshing_utilities.get_objects(filter=r'*')")
 (%py-exec "print('OBJECTS:', objs)")
-(%py-exec "encl = ([o for o in objs if str(o).lower() in ('enclosure','tunnel','box','bounding_box','boundingbox')] or [o for o in objs if str(o).lower() != 'geom'])[0]")
+; Enclosure pick: prefer an explicitly named enclosure body, else the
+; truncated 'v0' (Fluent cuts object names at the first dot, so
+; 'v0.4-step-enclosure' arrives as 'v0' — fc8/fc9), else the non-'geom' one.
+(%py-exec "encl = ([o for o in objs if str(o).lower() in ('enclosure','tunnel','box','bounding_box','boundingbox')] or [o for o in objs if 'enclosur' in str(o).lower()] or [o for o in objs if str(o).lower() == 'v0'] or [o for o in objs if str(o).lower() != 'geom'])[0]")
 (%py-exec "body = ([o for o in objs if str(o).lower() not in (str(encl).lower(), 'tunnel')] or objs)[0]")
 (%py-exec "print('ENCLOSURE_OBJECT:', encl, 'BODY_OBJECT:', body)")
 ; ExtractionMethod 'wrap' is REQUIRED with wrap-method fluid regions — with
@@ -63,9 +95,22 @@
 ; body/proximity resolution and degenerates (2,460 faces @ skew 1.0), and low
 ; global floors explode the size-field octree (30–105 min). The DEFAULT
 ; controls wrapped this class of geometry in ~13 s at avg skew 0.084.
-; [needs-cluster] finer wing resolution should be added as scoped controls ON
-; TOP of defaults (Add Local Sizing / LocalSizeControlParameters) — validate
-; cost first; config surface_mesh sizes are intentionally NOT wired here yet.
+; Finer resolution is added as scoped controls ON TOP of defaults below.
+{% set ss = mesh.scoped_sizing %}
+{% if ss %}
+; ── Scoped curvature+proximity sizing on the CAR objects only (fc10) ──
+; Default sizing alone wraps this car at only ~89k cells (fc9) — too coarse
+; for aero. Scoped controls on the car objects (never the tunnel shell)
+; refine the wrap where it matters: {{ ss.min_size }}–{{ ss.max_size }} {{ mesh.geometry_unit | default('mm') }},
+; {{ ss.cells_per_gap }} cells/gap. AddChildAndUpdate — never 'Custom' (fc10 → 2.17M cells).
+(%py-exec "carobjs = [str(o) for o in objs if str(o).lower() != str(encl).lower()]")
+(%py-exec "print('CAR_OBJECTS:', len(carobjs))")
+(%py-exec "workflow.TaskObject['Add Local Sizing'].Arguments.set_state({r'LocalSettingsName': r'car-curvature', r'SelectionType': r'object', r'ObjectSelectionList': carobjs, r'LocalSizeControlParameters': {r'SizingType': r'curvature', r'MinSize': {{ ss.min_size }}, r'MaxSize': {{ ss.max_size }}, r'GrowthRate': {{ ss.growth_rate }}, r'CurvatureNormalAngle': {{ ss.curvature_normal_angle }}, r'ScopeProximityTo': r'faces-and-edges'}})")
+(%py-exec "workflow.TaskObject['Add Local Sizing'].AddChildAndUpdate(DeferUpdate=False)")
+(%py-exec "workflow.TaskObject['Add Local Sizing'].Arguments.set_state({r'LocalSettingsName': r'car-proximity', r'SelectionType': r'object', r'ObjectSelectionList': carobjs, r'LocalSizeControlParameters': {r'SizingType': r'proximity', r'MinSize': {{ ss.min_size }}, r'MaxSize': {{ ss.max_size }}, r'GrowthRate': {{ ss.growth_rate }}, r'CellsPerGap': {{ ss.cells_per_gap }}, r'ScopeProximityTo': r'faces'}})")
+(%py-exec "workflow.TaskObject['Add Local Sizing'].AddChildAndUpdate(DeferUpdate=False)")
+(display "SCOPED_SIZING_DONE")(newline)
+{% endif %}
 (%py-exec "workflow.TaskObject['Choose Mesh Control Options'].Execute()")
 (display "CMCO_DONE")(newline)
 
@@ -81,12 +126,19 @@
 (%py-exec "workflow.TaskObject['Generate the Volume Mesh'].Execute()")
 (display "VOLUME_DONE")(newline)
 
+{% if mesh.classify_boundaries | default(false) %}
+; Geometric boundary classification + slab carve (does its own
+; switch-to-solution-mode; leaves named zones inlet/outlet/symmetry/
+; farfield-*/car/car-shell ready for the solver BC block).
+{% include '_ft_classify_carve.jou.j2' %}
+{% else %}
 ; ══════════════════════════════════════════════════════════════════════
 ; Persist the mesh as a solver-readable case file (same artifact contract as
 ; the Watertight path).
 ; ══════════════════════════════════════════════════════════════════════
 switch-to-solution-mode
 yes
+{% endif %}
 
 (display "=== MESH ZONE LIST ===")(newline)
 /define/boundary-conditions/list-zones

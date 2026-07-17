@@ -73,6 +73,13 @@ _MESH: dict = {
     "describe_setup_type": "default",
     "wall_to_internal": False,
     "pin_cad_import_options": True,
+    # FT wrap full-car recipe (fc13→fc28) — off by default (component path).
+    "delete_bodies": [],
+    "prewrap_shell_split": False,
+    "prewrap_shell_zone": 6,
+    "scoped_sizing": None,
+    "classify_boundaries": False,
+    "carve_domain": None,
 }
 
 
@@ -102,63 +109,28 @@ def _wake_box(name: str, labels: list[str], **ratios: float) -> dict:
     return box
 
 
-# Full car: specialist-validated watertight recipe (meshjournal.jou on
-# V0.4-stepFC — fluid-only CAD, wake/nearfield boxes, poly-hexcore). Mirrors
-# profiles.yaml full_car.mesh — the production source of truth.
+# Full car: fault-tolerant WRAP recipe, validated end-to-end as the fc-series
+# (fc13→fc28; drag 316 N / downforce 970 N). Mirrors profiles.yaml full_car.mesh
+# — the production source of truth. The specialist watertight replay was
+# abandoned (sliver trailing edges); the wrap is immune to slivers + duplicate
+# solids and produces the classifier's car/car-shell + tunnel-plane zones.
 _MESH_OVERRIDES: dict = {
     "full_car": {
-        "workflow": "watertight",
+        "workflow": "fault-tolerant",
         "geometry_unit": "mm",
-        "describe_setup_type": "fluid-only",
-        "wall_to_internal": True,
-        "pin_cad_import_options": False,
-        "original_zones": None,
-        "surface_mesh": {
-            "min_size": 1.0, "max_size": 50.0,
-            "curvature_normal_angle": 18.0, "growth_rate": 1.2,
+        "delete_bodies": ["bounding_box"],
+        "prewrap_shell_split": True,
+        "prewrap_shell_zone": 6,
+        "scoped_sizing": {
+            "min_size": 2.0, "max_size": 16.0, "growth_rate": 1.2,
+            "curvature_normal_angle": 18.0, "cells_per_gap": 3,
         },
-        "mesh_quality": {
-            "surface_skewness_threshold": 0.6,
-            "volume_orthogonal_quality_threshold": 0.15,
-            "auto_improve": True,
-            "improve_volume": False,   # specialist journal has no volume improve
-            "sq_min_size": 0.25,       # trailing-edge face size
-        },
-        "refinement_regions": [
-            _wake_box("front-tire-wake", ["front-left-wheel"], x_min=1.0),
-            _wake_box("rear-tire-wake", ["rear-left-wheel"], x_min=1.5, y_min=2.5),
-            {
-                "name": "nearfield", "max_size": 10.0, "labels": [],
-                "x_min_ratio": 0.1, "x_max_ratio": 0.1,
-                "y_min_ratio": 0.1, "y_max_ratio": 0.1,
-                "z_min_ratio": 0.1, "z_max_ratio": 0.1,
-                # y_min/z_min inherit GUI leftovers in the recording
-                # (delta-state) — reproduced for fidelity.
-                "x_min": -1500.0, "x_max": 2500.0,
-                "y_min": 31.68325805664045, "y_max": 1000.0,
-                "z_min": -38.14357504844666, "z_max": 2000.0,
-            },
-        ],
-        "local_sizing": [
-            _face_sizing("fw-rw-whisker", 5.0, ["front-wing", "rear-wing", "whisker"]),
-            _face_sizing("trailing-edges", 0.25, ["trailing-edges"]),
-            _face_sizing("undertray", 2.5, ["undertray"]),
-            _face_sizing("chassis", 10.0, ["chassis"]),
-            _face_sizing("wheels", 10.0, ["front-left-wheel", "rear-left-wheel"]),
-        ],
-        "volume_mesh": {
-            "max_cell_length": 0.15,
-            "growth_rate": 1.2,
-            "first_layer_height_mm": None,
-            "first_layer_height": 5e-05,
-            "num_layers": 6,
-            "bl_growth_rate": 1.2,
-            "prism_labels": [
-                "chassis", "front-left-wheel", "front-wing", "rear-left-wheel",
-                "rear-wing", "suspension", "trailing-edges", "undertray", "whisker",
-            ],
-            "fill": "poly-hexcore",
-            "hex_max_cell_length": 32.0,
+        "classify_boundaries": True,
+        "carve_domain": {
+            "x_min": -12.454, "x_max": 3.941,
+            "y_min": 0.0, "y_max": 3.209,
+            "z_min": 0.0, "z_max": 3.726,
+            "margin": 0.006, "rim_margin": 0.04, "epsilon": 0.001,
         },
     },
 }
@@ -295,29 +267,25 @@ _FULL_CAR_SOLVER: dict = {
         "near_wall_treatment": "auto",
         "curvature_correction": True,
     },
+    # BCs reference the FT classifier's zone names (fc28), not the CAD.
+    # BASELINE: stationary ground + non-rotating wheels (car merged into one
+    # 'car' zone + 'car-shell' imprint; carved ground/rim strips default to
+    # stationary walls). Moving ground / rotating wheels come with the
+    # specialist comparison conditions + per-component wheel separation.
     "boundary_conditions": {
         "velocity_inlets": [_inlet()],
-        # F4 fix: the specialist preset omitted an outlet (AUDIT C8).
         "pressure_outlets": [{"zone_name": "outlet", "gauge_pressure": 0.0}],
-        "translating_walls": [_ground()],
-        "rotating_walls": [
-            {
-                "zone_name": "front-tire", "omega_rad_s": 77.0,
-                "origin_x": 0.8264, "origin_y": 0.6125, "origin_z": 0.1998,
-                "axis_x": 0.0, "axis_y": 1.0, "axis_z": 0.0,
-            },
-            {
-                "zone_name": "rear-tire", "omega_rad_s": 77.0,
-                "origin_x": -0.7056, "origin_y": 0.6125, "origin_z": 0.1998,
-                "axis_x": 0.0, "axis_y": 1.0, "axis_z": 0.0,
-            },
-        ],
+        "translating_walls": [],
+        "rotating_walls": [],
         "slip_walls": [
-            {"zone_name": "tunnel-walls"},
-            {"zone_name": "contact-patches"},
+            {"zone_name": "farfield-top"},
+            {"zone_name": "farfield-side"},
         ],
-        "stationary_walls": [],
-        # Half-car centreline symmetry plane (AUDIT C9 — was missing pre-M2).
+        "stationary_walls": [
+            {"zone_name": "car"},
+            {"zone_name": "car-shell"},
+        ],
+        # Half-car centreline symmetry plane (AUDIT C9).
         "symmetry_planes": [{"zone_name": "symmetry"}],
     },
     "solution_methods": copy.deepcopy(_SOLUTION_METHODS),
@@ -334,7 +302,8 @@ _FULL_CAR_SOLVER: dict = {
         "area_m2": 1.0, "length_m": 1.5367, "velocity_mps": 15.65, "density_kg_m3": 1.225,
     },
     "symmetry": copy.deepcopy(_SYMMETRY),
-    "reporting": copy.deepcopy(_REPORTING),
+    # Forces integrate over the classifier's car zones (fc28: car + car-shell).
+    "reporting": {**copy.deepcopy(_REPORTING), "body_wall_pattern": "car car-shell"},
     "initialization": "hybrid",
 }
 

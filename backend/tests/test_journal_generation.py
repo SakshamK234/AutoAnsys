@@ -152,8 +152,11 @@ def test_reference_density_is_set(profile: str, journal: str):
 @pytest.mark.parametrize("journal", ("solver_from_case.jou", "combined.jou"))
 def test_forces_are_body_scoped_not_wildcard(profile: str, journal: str):
     # AUDIT C3: force reports must target the body wall pattern, not all walls.
+    # individual_part uses 'wall-body*'; full_car integrates over the FT
+    # classifier's car zones ('car car-shell', fc28) — either way NEVER '*'.
     content = render_profile_artifacts(profile)[journal]
-    assert "thread-names wall-body*" in content
+    expected = "thread-names car car-shell" if profile == "full_car" else "thread-names wall-body*"
+    assert expected in content
     assert "thread-names * ()" not in content  # no force report over every wall
 
 
@@ -234,24 +237,25 @@ def test_mesh_workflow_unknown_raises():
 
 
 def test_per_profile_mesh_workflow():
-    # Both profiles now run Watertight: the wing SOP path and the specialist
-    # full-car recipe (meshjournal.jou on V0.4-stepFC). Full car must carry the
-    # specialist-only pieces; the component path must NOT grow them.
+    # individual_part = Watertight (wing SOP path). full_car = the validated
+    # fault-tolerant WRAP recipe (fc13→fc28): junk-body deletion, pre-wrap
+    # CAD-shell split, scoped car sizing, geometric classifier + slab carve.
+    # None of the FT full-car pieces may leak into the component path.
     comp = render_profile_artifacts("individual_part")["mesh_only.jou"]
     full = render_profile_artifacts("full_car")["mesh_only.jou"]
     assert "Watertight Geometry" in comp
-    assert "Watertight Geometry" in full
+    assert "Fault-tolerant Meshing" in full
     for marker in (
-        "CreateLocalRefinementRegions",
-        "'RefinementRegionsName': r'front-tire-wake'",
-        "'SetupType': r'The geometry consists of only fluid regions with no voids'",
-        "'WallToInternal': r'Yes'",
-        "'GrowOn': r'selected-labels'",
-        "'VolumeFill': r'poly-hexcore'",
-        "'HexMaxCellLength': 32.0",
+        "/objects/delete bounding_box ()",
+        "boundary separate sep-face-zone-by-angle 6 40",
+        "'SizingType': r'curvature'",
+        "'SizingType': r'proximity'",
+        "CLASSIFY_BEGIN",
+        "car-shell",
+        "/mesh/modify-zones/sep-face-zone-mark car-shell ground_slab yes",
     ):
-        assert marker in full, f"specialist step missing from full_car: {marker}"
-        assert marker not in comp, f"specialist step leaked into component: {marker}"
+        assert marker in full, f"FT full-car step missing from full_car: {marker}"
+        assert marker not in comp, f"FT full-car step leaked into component: {marker}"
 
 
 def test_prism_layer_count_from_config():

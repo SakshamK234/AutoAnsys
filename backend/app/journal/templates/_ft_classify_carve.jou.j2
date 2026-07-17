@@ -1,0 +1,117 @@
+; ════════════════════════════════════════════════════════════════════════
+; FT WRAP — AUTOMATED BOUNDARY ASSIGNMENT + SLAB CARVE (fc16→fc28)
+; Included by mesh_fault_tolerant.jou.j2 between VOLUME_DONE and the mesh
+; write, when mesh.classify_boundaries is set. All queries use the
+; cluster-validated meshing_utilities API (probes 6380058+).
+;
+; Stage 1 (meshing mode): geometrically classify the wrapped tunnel shell —
+;   flatness + position at a domain extreme names inlet(+x)/outlet(-x)/
+;   symmetry(y-min)/farfield-top(z-max)/farfield-side(y-max). The ground
+;   plane cannot be split by angle (it meets the wheels at TANGENTIAL contact
+;   patches, fc14-17), so the fused mega-zone is renamed 'car-shell' and the
+;   ground/top/rim strips are carved out of it after the mode switch. All the
+;   real car component zones merge into 'car'. The rename/merge commands are
+;   written to a scheme file and loaded after switch-to-solution-mode.
+; Stage 2 (solver mode): coordinate-slab cell registers + sep-face-zone-mark
+;   carve the non-car surfaces out of car-shell into anonymous stray wall
+;   zones (which default to stationary walls — the baseline BC), leaving
+;   car-shell as a pure car imprint. car + car-shell together are the force
+;   body. (fc26d proved the register dialog; fc28 the full carve.)
+; ════════════════════════════════════════════════════════════════════════
+
+(display "CLASSIFY_BEGIN")(newline)
+(%py-exec "allz = meshing_utilities.get_face_zones(filter=r'*')")
+(%py-exec "meshz = [z for z in allz if z > 1000]")
+(%py-exec "print('MESH_FACE_ZONES:', len(meshz), 'of', len(allz))")
+(%py-exec "bbs = {z: meshing_utilities.get_bounding_box_of_zone_list(zone_id_list=[z]) for z in meshz}")
+(%py-exec "xmin = min(b[0][0] for b in bbs.values()); xmax = max(b[1][0] for b in bbs.values()); ymin = min(b[0][1] for b in bbs.values()); ymax = max(b[1][1] for b in bbs.values()); zmin = min(b[0][2] for b in bbs.values()); zmax = max(b[1][2] for b in bbs.values())")
+(%py-exec "print('DOMAIN_EXTENTS_m:', [[xmin,ymin,zmin],[xmax,ymax,zmax]])")
+(%py-exec "tol = 0.004 * max(xmax - xmin, ymax - ymin, zmax - zmin)")
+(%py-exec "interior = set(meshing_utilities.get_face_zones(filter=r'interior*'))")
+(%py-exec "shell = [z for z in meshz if z not in interior]")
+(%py-exec "def flat(z, i): return (bbs[z][1][i] - bbs[z][0][i]) < tol")
+(%py-exec "def at(z, i, v): return abs(bbs[z][0][i] - v) < tol and abs(bbs[z][1][i] - v) < tol")
+(%py-exec "names = {}")
+(%py-exec "[names.__setitem__(z, 'inlet') for z in shell if flat(z, 0) and at(z, 0, xmax)]")
+(%py-exec "[names.__setitem__(z, 'outlet') for z in shell if flat(z, 0) and at(z, 0, xmin)]")
+(%py-exec "[names.__setitem__(z, 'farfield-top') for z in shell if flat(z, 2) and at(z, 2, zmax)]")
+(%py-exec "[names.__setitem__(z, 'symmetry') for z in shell if flat(z, 1) and at(z, 1, ymin)]")
+(%py-exec "[names.__setitem__(z, 'farfield-side') for z in shell if flat(z, 1) and at(z, 1, ymax)]")
+; The ground plane fuses with the car through tangential contact patches, so
+; the flat-thin test fails for it: pick the largest still-unassigned zone
+; touching z-min and adjudicate by AREA vs the exact ground-plane area. That
+; mega-zone becomes 'car-shell'; the carve peels the ground back off it.
+(%py-exec "gcands = [z for z in shell if z not in names and bbs[z][0][2] < tol]")
+(%py-exec "ars = {z: meshing_utilities.get_face_zone_area(face_zone_id_list=[z]) for z in gcands}")
+(%py-exec "gexp = (xmax - xmin) * (ymax - ymin)")
+(%py-exec "gbest = max(gcands, key=lambda z: ars[z]) if gcands else None")
+(%py-exec "print('CARSHELL_PICK', gbest, ars.get(gbest), 'ground_plane_area', gexp)")
+(%py-exec "assert gbest is not None, 'no mega-zone touching the ground plane found'")
+(%py-exec "names.setdefault(gbest, 'car-shell')")
+(%py-exec "print('ASSIGNED:', names)")
+(%py-exec "assert sorted(set(names.values())) == ['car-shell', 'farfield-side', 'farfield-top', 'inlet', 'outlet', 'symmetry'], 'classifier missing tunnel faces: ' + str(sorted(set(names.values())))")
+(%py-exec "groups = {n: sorted(z for z, v in names.items() if v == n) for n in set(names.values())}")
+(%py-exec "carz = sorted(z for z in meshz if z not in names and z not in interior)")
+(%py-exec "print('CAR_ZONES:', len(carz), carz)")
+(%py-exec "assert len(carz) >= 5, 'suspiciously few car zones: ' + str(carz)")
+; Write the rename/merge scheme (executed after the mode switch: merge-zones /
+; zone-name are solver-mode ops).
+(%py-exec "f = open(r'{{ workspace }}/assign.scm', 'w')")
+(%py-exec "q = chr(34); nl = chr(10)")
+(%py-exec "[f.write('(ti-menu-load-string ' + q + '/mesh/modify-zones/merge-zones ' + ' '.join(str(z) for z in zs) + ' ()' + q + ')' + nl) for n, zs in sorted(groups.items()) if len(zs) > 1]")
+(%py-exec "[f.write('(ti-menu-load-string ' + q + '/mesh/modify-zones/zone-name ' + str(zs[0]) + ' ' + n + q + ')' + nl) for n, zs in sorted(groups.items())]")
+(%py-exec "f.write('(ti-menu-load-string ' + q + '/mesh/modify-zones/merge-zones ' + ' '.join(str(z) for z in carz) + ' ()' + q + ')' + nl)")
+(%py-exec "f.write('(ti-menu-load-string ' + q + '/mesh/modify-zones/zone-name ' + str(carz[0]) + ' car' + q + ')' + nl)")
+(%py-exec "f.close()")
+(display "CLASSIFIER_DONE")(newline)
+
+switch-to-solution-mode
+yes
+
+(load "{{ workspace }}/assign.scm")
+(display "ASSIGN_LOADED")(newline)
+
+{% set cd = mesh.carve_domain %}
+{% if cd %}
+; ── Stage 2: carve non-car surfaces out of car-shell (coordinate slabs) ──
+; Register dialog + sep syntax proven in fc26d/fc28 (bare TUI stdin lines;
+; the coords come from mesh.carve_domain, defaulted to the V0.4 wrapped
+; domain). Marked faces move to NEW anonymous zones that default to
+; stationary walls — the baseline BC — so they need no names.
+{% set e = cd.epsilon %}
+{% macro slab(name, x0, y0, z0, x1, y1, z1) %}
+mesh adapt cell-registers add
+{{ name }}
+type
+hexahedron
+min-point
+{{ x0 }}
+{{ y0 }}
+{{ z0 }}
+max-point
+{{ x1 }}
+{{ y1 }}
+{{ z1 }}
+quit
+quit
+/mesh/modify-zones/sep-face-zone-mark car-shell {{ name }} yes
+(display "SEP_{{ name | upper }}_DONE")(newline)
+{%- endmacro %}
+; ground: thin slab up from z-min (fc28: z −0.001 → +0.006), full x/y span.
+{{ slab('ground_slab', cd.x_min - e, cd.y_min - e, cd.z_min - e, cd.x_max + e, cd.y_max + e, cd.z_min + cd.margin) }}
+; top / inlet / outlet / far-side: rim slabs reaching inward from each wall.
+{{ slab('top_slab', cd.x_min - e, cd.y_min - e, cd.z_max - cd.rim_margin, cd.x_max + e, cd.y_max + e, cd.z_max + e) }}
+{{ slab('inlet_slab', cd.x_max - cd.rim_margin, cd.y_min - e, cd.z_min - e, cd.x_max + e, cd.y_max + e, cd.z_max + e) }}
+{{ slab('outlet_slab', cd.x_min - e, cd.y_min - e, cd.z_min - e, cd.x_min + cd.rim_margin, cd.y_max + e, cd.z_max + e) }}
+{{ slab('side_slab', cd.x_min - e, cd.y_max - cd.rim_margin, cd.z_min - e, cd.x_max + e, cd.y_max + e, cd.z_max + e) }}
+(display "CARVE_DONE")(newline)
+{% endif %}
+
+; ── Pin flow-boundary zone TYPES into the mesh (like Discovery labels do
+;    for the watertight path) so mesh.cas.h5 carries them and the shared
+;    solver BC block only has to set VALUES. Car / farfield / carved zones
+;    stay the default wall type. ──
+/define/boundary-conditions/zone-type inlet velocity-inlet
+/define/boundary-conditions/zone-type outlet pressure-outlet
+/define/boundary-conditions/zone-type symmetry symmetry
+(display "ZONE_TYPES_PINNED")(newline)

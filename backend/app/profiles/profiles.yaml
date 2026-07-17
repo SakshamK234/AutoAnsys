@@ -93,131 +93,67 @@ profiles:
       cores_per_node: 128
       memory_gb: 243
       walltime_hours: 24
-    # Specialist-validated watertight recipe (meshjournal.jou, V0.4-stepFC):
-    # the full-car STEP models the tunnel-minus-car FLUID volume directly
-    # ("only fluid regions with no voids" + wall-to-internal), with named face
-    # labels (chassis / wings / wheels / trailing-edges / undertray /
-    # suspension / whisker). Sizes in mm. Replaces the fault-tolerant/wrap
-    # path, which is kept only for unlabelled dirty assemblies.
+    # Fault-tolerant WRAP recipe, validated end-to-end on ARC as the fc-series
+    # (fc13→fc28, docs/CLUSTER_FINDINGS.md): the V0.4-stepFC export is a fluid
+    # volume + overlapping car solids + a junk bounding-box body with NO usable
+    # face labels, so the specialist watertight replay fails on sliver trailing
+    # edges. The shrink-wrap is immune to slivers and duplicate solids. fc28
+    # ran this in 49 min → drag 316 N / downforce 970 N (baseline BCs). The
+    # boundary names below are produced by the geometric classifier, not the CAD.
     mesh:
-      workflow: watertight
+      workflow: fault-tolerant
       geometry_unit: mm
-      describe_setup_type: fluid-only
-      wall_to_internal: true
-      pin_cad_import_options: false   # specialist import = task defaults
-      # Specialist journal relies on task-default zone handling; the SOP
-      # OriginalZones names do not exist in this CAD.
-      original_zones: null
-      surface_mesh:
-        min_size: 1.0
-        max_size: 50.0
-        curvature_normal_angle: 18.0
+      # Delete the redundant crate body that seals the car off from the flow.
+      delete_bodies: [bounding_box]
+      # Pre-wrap CAD-shell split so the tunnel box faces survive the wrap.
+      prewrap_shell_split: true
+      prewrap_shell_zone: 6
+      # Scoped curvature+proximity on the car objects → 2.17 M cells (fc10);
+      # bare defaults give a useless 89 k. Sizes in geometry units (mm).
+      scoped_sizing:
+        min_size: 2.0
+        max_size: 16.0
         growth_rate: 1.2
-      mesh_quality:
-        surface_skewness_threshold: 0.6
-        sq_min_size: 0.25          # trailing-edge face size
-        auto_improve: true
-        improve_volume: false      # specialist journal has no volume improve
-      refinement_regions:
-        - name: front-tire-wake
-          max_size: 5
-          labels: [front-left-wheel]
-          x_min_ratio: 1.0         # wake stretch behind the wheel
-        - name: rear-tire-wake
-          max_size: 5
-          labels: [rear-left-wheel]
-          x_min_ratio: 1.5
-          y_min_ratio: 2.5
-        - name: nearfield
-          max_size: 10
-          # Absolute box (mm). y_min/z_min inherit GUI leftovers in the
-          # recording (delta-state) — reproduced here for fidelity.
-          x_min: -1500.0
-          x_max: 2500.0
-          y_min: 31.68325805664045
-          y_max: 1000.0
-          z_min: -38.14357504844666
-          z_max: 2000.0
-      local_sizing:
-        - name: fw-rw-whisker
-          type: face_sizing
-          size: 5.0
-          growth_rate: 1.2
-          cells_per_gap: 1
-          curvature_normal_angle: 18.0
-          face_zones: [front-wing, rear-wing, whisker]
-        - name: trailing-edges
-          type: face_sizing
-          size: 0.25
-          growth_rate: 1.2
-          cells_per_gap: 1
-          curvature_normal_angle: 18.0
-          face_zones: [trailing-edges]
-        - name: undertray
-          type: face_sizing
-          size: 2.5
-          growth_rate: 1.2
-          cells_per_gap: 1
-          curvature_normal_angle: 18.0
-          face_zones: [undertray]
-        - name: chassis
-          type: face_sizing
-          size: 10.0
-          growth_rate: 1.2
-          cells_per_gap: 1
-          curvature_normal_angle: 18.0
-          face_zones: [chassis]
-        - name: wheels
-          type: face_sizing
-          size: 10.0
-          growth_rate: 1.2
-          cells_per_gap: 1
-          curvature_normal_angle: 18.0
-          face_zones: [front-left-wheel, rear-left-wheel]
-      volume_mesh:
-        fill: poly-hexcore
-        hex_max_cell_length: 32.0
-        num_layers: 6
-        prism_labels: [chassis, front-left-wheel, front-wing, rear-left-wheel,
-                       rear-wing, suspension, trailing-edges, undertray, whisker]
+        curvature_normal_angle: 18.0
+        cells_per_gap: 3
+      # Geometric boundary classification + slab carve (fc16/fc28): names the
+      # tunnel planes by position and peels ground/top/rim strips off the fused
+      # car-shell zone. carve_domain is the WRAPPED domain in SOLVER units (m) —
+      # these are the V0.4 car's extents; a different car needs its own.
+      classify_boundaries: true
+      carve_domain:
+        x_min: -12.454
+        x_max: 3.941
+        y_min: 0.0
+        y_max: 3.209
+        z_min: 0.0
+        z_max: 3.726
+        margin: 0.006
+    # Forces integrate over the classifier's car zones (fc28: car + car-shell).
+    reporting:
+      body_wall_pattern: "car car-shell"
     boundary_conditions:
       velocity_inlets:
         - zone_name: inlet
           velocity: 15.65
           turbulent_intensity_pct: 5.0
           turbulent_viscosity_ratio: 10.0
-      # F4 (maintainer-confirmed fix): the specialist preset omitted an outlet
-      # (AUDIT C8); an external-aero domain needs one.
       pressure_outlets:
         - zone_name: outlet
           gauge_pressure: 0.0
-      translating_walls:
-        - zone_name: ground
-          velocity_mps: 15.65
-          direction_x: -1.0
-          direction_y: 0.0
-          direction_z: 0.0
-      rotating_walls:
-        - zone_name: front-tire
-          omega_rad_s: 77.0
-          origin_x: 0.8264
-          origin_y: 0.6125
-          origin_z: 0.1998
-          axis_x: 0.0
-          axis_y: 1.0
-          axis_z: 0.0
-        - zone_name: rear-tire
-          omega_rad_s: 77.0
-          origin_x: -0.7056
-          origin_y: 0.6125
-          origin_z: 0.1998
-          axis_x: 0.0
-          axis_y: 1.0
-          axis_z: 0.0
+      # BASELINE: stationary ground + non-rotating wheels — the only live-
+      # validated wall forms (fc28). The car body is one merged 'car' zone plus
+      # the 'car-shell' imprint; the carved ground/rim strips default to
+      # stationary walls. Swap to moving ground / rotating wheels (translating_/
+      # rotating_walls) once the specialist's comparison conditions arrive AND
+      # the per-component wheel zones are separated.
+      stationary_walls:
+        - zone_name: car
+        - zone_name: car-shell
+      # Tunnel top + far side are frictionless (slip) walls.
       slip_walls:
-        - zone_name: tunnel-walls
-        - zone_name: contact-patches
-      # Half-car centreline symmetry plane (AUDIT C9 — was missing). Pairs with
-      # symmetry.force_factor: 2.0 above.
+        - zone_name: farfield-top
+        - zone_name: farfield-side
+      # Half-car centreline symmetry plane. Pairs with force_factor: 2.0 above.
       symmetry_planes:
         - zone_name: symmetry

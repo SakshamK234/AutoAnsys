@@ -152,11 +152,73 @@ class MeshQuality(BaseModel):
     sq_min_size: float | None = None
 
 
+class ScopedSizing(BaseModel):
+    """FT wrap curvature+proximity controls scoped to the CAR objects only, ON
+    TOP of the workflow default control set (fc9/fc10). Refines the wrap where
+    it matters without the tunnel shell. Never use CreationMethod 'Custom' —
+    it REPLACES defaults and degenerates the wrap (probes 6377338+)."""
+
+    min_size: float = 2.0
+    max_size: float = 16.0
+    growth_rate: float = 1.2
+    curvature_normal_angle: float = 18.0
+    cells_per_gap: int = 3
+
+
+class CarveDomain(BaseModel):
+    """Coordinate slabs (in SOLVER units — metres) that carve non-car surfaces
+    (ground / tunnel top / inlet-outlet-side rim strips) out of the fused
+    'car-shell' zone after the wrap (fc26d–fc28). Ground fuses with the wheels
+    through tangential contact patches, so no angle method can separate it —
+    a thin z-slab register + sep-face-zone-mark does.
+
+    Defaults are the V0.4-stepFC wrapped domain (fc28). A DIFFERENT car needs
+    its own bounds (read them from the mesh's MESH ZONE LIST / domain extents).
+    Margins are the slab thickness at each face."""
+
+    x_min: float = -12.454
+    x_max: float = 3.941
+    y_min: float = 0.0
+    y_max: float = 3.209
+    z_min: float = 0.0
+    z_max: float = 3.726
+    # How far in from the GROUND plane (z-min) the carve slab reaches (m). The
+    # ground fuses with the wheel contact patches, so keep this thin to avoid
+    # eating wheel geometry (fc28: 6 mm).
+    margin: float = 0.006
+    # How far in from each tunnel WALL (top / inlet / outlet / far side) the rim
+    # carve slabs reach (m), to peel rim strips that stuck to car-shell near the
+    # walls (fc28: 40 mm). y-min is the symmetry plane and gets no slab.
+    rim_margin: float = 0.04
+    # Tiny over-reach past each plane so boundary faces are surely enclosed (m).
+    epsilon: float = 0.001
+
+
 class MeshConfig(BaseModel):
     local_sizing: list[LocalSizingRegion] = []
     # Watertight 'Create Local Refinement Regions' boxes (specialist full-car
     # journal): tire-wake boxes relative to wheel labels + absolute nearfield.
     refinement_regions: list[RefinementRegionBox] = []
+    # ── FT wrap full-car recipe (fc13→fc28, config-driven) ────────────────
+    # CAD objects to delete after import — the V0.4 export packs a redundant
+    # 'bounding_box' body that wraps into a sealed crate around the car (fc11).
+    delete_bodies: list[str] = []
+    # Split the fluid body's CAD shell by angle BEFORE the wrap so the tunnel
+    # box faces survive as separate zones (the wrap rounds edges — fc14/fc16).
+    prewrap_shell_split: bool = False
+    # CAD face-zone id of the fluid shell to split (deterministic per import;
+    # 6 for the V0.4 export, fc11/fc28). A dimension assert guards it.
+    prewrap_shell_zone: int = 6
+    # Scoped curvature+proximity sizing on the car objects (fc10). None → the
+    # bare workflow defaults (structurally valid but ~89k cells, too coarse).
+    scoped_sizing: ScopedSizing | None = None
+    # Run the geometric boundary classifier after the wrap: split the tunnel
+    # shell, name inlet/outlet/symmetry/farfield-* by position, merge car
+    # zones → 'car', rename the fused mega-zone 'car-shell' (fc16/fc28).
+    classify_boundaries: bool = False
+    # Carve ground/top/rim slabs out of car-shell (fc28). Requires
+    # classify_boundaries. None → no carve (forces would include tunnel walls).
+    carve_domain: CarveDomain | None = None
     surface_mesh: SurfaceMeshConfig = Field(default_factory=SurfaceMeshConfig)
     volume_mesh: VolumeMeshConfig = Field(default_factory=VolumeMeshConfig)
     wind_tunnel: WindTunnelConfig = Field(default_factory=WindTunnelConfig)
@@ -462,6 +524,15 @@ def apply_cfd_mode_defaults(mode: str, sc: "SolverConfig") -> "SolverConfig":
     if sym and not sc.symmetry.half_model and sc.symmetry.force_factor == 1.0:
         sc.symmetry.half_model = bool(sym.get("half_model", False))
         sc.symmetry.force_factor = float(sym.get("force_factor", 1.0))
+
+    # Body-wall force-integration pattern (full_car classifier emits car +
+    # car-shell). Seed only while still at the schema default so a user choice
+    # is never clobbered.
+    rep = profile.get("reporting")
+    if rep and sc.reporting.body_wall_pattern == "wall-body*":
+        sc.reporting.body_wall_pattern = rep.get(
+            "body_wall_pattern", sc.reporting.body_wall_pattern
+        )
 
     return sc
 

@@ -57,20 +57,22 @@ def test_full_car_preset_values():
     assert p["reference_values"]["length_m"] == 1.5367
     assert p["convergence"]["max_iterations"] == 750
     bc = p["boundary_conditions"]
-    wheels = {w["zone_name"]: w for w in bc["rotating_walls"]}
-    assert set(wheels) == {"front-tire", "rear-tire"}
-    assert wheels["front-tire"]["omega_rad_s"] == 77.0
-    assert wheels["front-tire"]["axis_y"] == 1.0
-    assert wheels["rear-tire"]["origin_x"] == -0.7056
+    # FT classifier zone names (fc28), BASELINE BCs: the car body is the merged
+    # 'car' + 'car-shell' stationary walls; tunnel top/side are slip walls; NO
+    # rotating wheels / moving ground yet (pending specialist conditions).
+    assert not bc.get("rotating_walls")
+    assert not bc.get("translating_walls")
+    walls = {w["zone_name"] for w in bc["stationary_walls"]}
+    assert walls == {"car", "car-shell"}
     slip = {s["zone_name"] for s in bc["slip_walls"]}
-    assert slip == {"tunnel-walls", "contact-patches"}
-    # M2 fix (AUDIT C9): half-car run now carries a centreline symmetry plane,
-    # paired with the doubling factor below.
+    assert slip == {"farfield-top", "farfield-side"}
+    # Half-car run carries a centreline symmetry plane, paired with the doubling.
     assert bc["symmetry_planes"][0]["zone_name"] == "symmetry"
     assert p["symmetry"]["half_model"] is True
     assert p["symmetry"]["force_factor"] == 2.0
-    # F4 fix (maintainer-confirmed): the specialist preset omitted an outlet.
     assert bc["pressure_outlets"][0]["zone_name"] == "outlet"
+    # Forces integrate over the classifier's car zones.
+    assert p["reporting"]["body_wall_pattern"] == "car car-shell"
 
 
 def test_per_profile_slurm_presets():
@@ -81,16 +83,17 @@ def test_per_profile_slurm_presets():
 
 
 def test_per_profile_mesh_workflow():
-    # full_car switched to the specialist-validated watertight recipe
-    # (fluid-only V0.4 CAD); fault-tolerant remains available by explicit
-    # config for unlabelled dirty assemblies.
+    # individual_part = Watertight (wing SOP). full_car = the validated
+    # fault-tolerant WRAP recipe (fc13→fc28): junk-body deletion, pre-wrap
+    # shell split, scoped car sizing, geometric classifier + slab carve.
     assert resolve_profile("individual_part")["mesh"]["workflow"] == "watertight"
     full = resolve_profile("full_car")["mesh"]
-    assert full["workflow"] == "watertight"
-    assert full["describe_setup_type"] == "fluid-only"
-    assert full["volume_mesh"]["fill"] == "poly-hexcore"
-    assert len(full["refinement_regions"]) == 3
-    assert len(full["local_sizing"]) == 5
+    assert full["workflow"] == "fault-tolerant"
+    assert full["delete_bodies"] == ["bounding_box"]
+    assert full["prewrap_shell_split"] is True
+    assert full["classify_boundaries"] is True
+    assert full["scoped_sizing"]["min_size"] == 2.0
+    assert full["carve_domain"]["x_min"] == -12.454
 
 
 def test_resolve_returns_independent_copies():
