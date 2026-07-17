@@ -337,6 +337,20 @@ re-export (HOOPS 24.6.0) is structurally a different package: face labels
 stripped, redundant solids added. A 1:1 replay needs the specialist's
 original `V0.4-step.stp`.
 
+fc5 (job 6395029) = fc4 + curvature/proximity 0.25 mm scoped to the fluid
+body. It moved the needle hard — skewed cells 1346 → 216, enclosure
+1327 → 92 — but 92+5 cells stay at EXACTLY skew 1.0 (degenerate sliver
+faces at the sharp trailing edges; even Improve's collapse pass at
+SIQualityCollapseLimit 0.85 cannot remove them) and Improve hard-stops on
+max=1.0. Cost blew up too: enclosure 6.9 M → 46.7 M faces, total 63.1 M
+(4.5 h surface mesh). Fluent's own error says the fix is a CAD chamfer.
+Conclusion: **the Watertight path cannot mesh this export as-is** — the
+specialist's `trailing-edges` label almost certainly covered blunt TE strip
+faces that pre-resolved exactly these slivers, and that label does not
+exist here. Watertight full-car needs either his labelled source file or a
+TE-chamfered export. → Pivot to the wing-proven FT/wrap path (fc8), which
+is immune to sliver TEs and duplicate solids by construction.
+
 fc6 (job 6395062) tested the `UseBodyLabels: 'Yes'` import-argument theory
 (STEP leaf body names hyphenate to exactly the specialist's short labels):
 the argument is ACCEPTED but the resulting label list is byte-identical to
