@@ -392,8 +392,26 @@ preserves per-component zones for force breakdowns. BUT: workflow-default
 sizing gave only **89,099 cells** — uselessly coarse for aero (the wing
 alone was 222k).
 
-fc10 (job 6400064) tests the flagged [needs-cluster] item: scoped
+fc10 (job 6400064) tested the flagged [needs-cluster] item: scoped
 curvature+proximity controls (AddLocalSizingFTM children, min 2 / max 16 mm,
 CellsPerGap 3) on the CAR objects only, ON TOP of the default control set
 (probes 6377338+ proved 'Custom' REPLACES defaults and degenerates the
-wrap — this adds children without touching CMCO).
+wrap — this adds children without touching CMCO). **✅ VALIDATED**:
+2,167,045 cells in 5 m 23 s, no cells below ortho-quality 1e-4. Scoped-on-
+top sizing is the FT refinement mechanism.
+
+fc11 (job 6400208) dumped every zone's area+bbox (validated utilities) —
+and exposed a geometry trap: **the 'Bounding Box' CAD body wraps into a
+sealed half-box wall around the car** (zone 93148: 6.2M mm² ≈ its full
+half-shell; the tunnel zone v0.1 = 249.8M mm² ≈ the BARE outer box). No
+wing/undertray zones exist in the fluid mesh beyond slivers; the only
+substantial car zones are the wheel portions poking through the box sides
+(312k mm² each). The fc9/fc10 meshes are a car-in-a-crate — structurally
+fine, aerodynamically useless. This also explains the Watertight path's
+"overlapping faces" warnings, and implies the specialist deleted this body
+in his GUI session (another unrecorded prep step). Domain truth from the
+dump: y ∈ [0, 3208] mm (symmetry at y=0, car on +y), x ∈ [−12453, 3940]
+(flow toward −x, 12.4 m wake), z ∈ [0, 3725], all mm.
+
+fc12 (job 6400492) = fc11 + `/objects/delete` of bounding_box post-import
+(hard %py-exec assert makes a failed delete abort in minutes).
