@@ -415,3 +415,50 @@ dump: y ∈ [0, 3208] mm (symmetry at y=0, car on +y), x ∈ [−12453, 3940]
 
 fc12 (job 6400492) = fc11 + `/objects/delete` of bounding_box post-import
 (hard %py-exec assert makes a failed delete abort in minutes).
+
+## ✅ FULL-CAR PATH — COMPLETE (fc13–fc28, 2026-07-17)
+
+**fc28 (job 6407645): the first automated full-car result. 49 m 49 s
+end-to-end** — mesh (6.07 M cells) → boundary classification → slab carving
+→ 750-iteration solve → converged forces. Official numbers at 15.65 m/s,
+baseline BCs (stationary ground, non-rotating wheels), ×2 symmetry:
+**drag 316.4 N, downforce 970.0 N, Cd 2.11 / Cl −6.47** (ref. 1.0 m²,
+1.5367 m). Plateau: last-50 σ = 0.25 N drag / 3.3 N lift. Contours rendered
+by a follow-up `-gu` session (fc29p) — the combined `-meshing -g` session
+has no graphics (known save-picture limitation).
+
+The winning chain and its evidence trail:
+
+- fc13: single-syntax `/objects/delete bounding_box ()` (fc12 taught that a
+  REDUNDANT second ti-menu attempt aborts — ti-menu errors are not always
+  non-fatal). Crate-free mesh, 6.07 M cells, 10 min.
+- fc14/fc15: post-wrap angle separation CANNOT isolate the tunnel box faces
+  — the wrap rounds the 90° box edges to a few degrees per facet (139/140
+  fragments, inlet+outlet+top+side stayed fused at 40° AND 15°).
+- fc16: **pre-wrap CAD-shell split** (`boundary separate
+  sep-face-zone-by-angle 6 40` right after import — CAD edges are still
+  sharp; zone 6 = the fluid shell, id stable, assert-guarded). Wrap output
+  inherits source-zone granularity (wing precedent) → 5 clean plane zones.
+- fc17: ground can NEVER split by angle — it meets the wheels at
+  TANGENTIAL contact patches (junction angle → 0). Area adjudication:
+  the fused mega-zone = 117.4 M mm² (ground 52.6 M + top piece + car
+  imprint + rims).
+- fc18–fc26: solver cell-register dialog discovered stepwise (sacrificial
+  prompt-chain probes): `mesh adapt cell-registers add` → name must be a
+  PYTHON IDENTIFIER (hyphens rejected as "Invalid python string") →
+  chooser (display-options|name|type) → `type` → (hexahedron sphere
+  cylinder boundary residual volume) → per-coordinate min/max prompts in
+  metres. Blank line lists a chooser; junk input ABORTS; `quit` exits one
+  level. Separation: `/mesh/modify-zones/sep-face-zone-mark <zone>
+  <register> yes` (the trailing flag is the confirm — `no` marks but skips).
+- fc27/fc28: the mega-zone keeps a KNOWN name (`car-shell`) and the
+  non-car surfaces are carved OUT of it into anonymous stray wall zones
+  (ground slab z<6 mm, top slab, 40 mm rim slabs at inlet/outlet/side) —
+  stray zones need no names because they default to stationary walls, the
+  baseline BC. Force reports run on `thread-names car car-shell`
+  (multi-zone list form works).
+
+Accepted baseline limitations (documented): wrap TE resolution ~2 mm vs
+the specialist's 0.25 mm strips; rim strips + top piece are stationary
+walls; per-component force breakdown deferred. Codification of this chain
+into the production templates is the next engineering task.
