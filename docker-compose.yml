@@ -87,8 +87,8 @@ services:
       - ./backend/app:/app/app
       - ./backend/alembic:/app/alembic
       # entrypoint.sh is NOT mounted: Windows CRLF breaks Linux exec; use the image copy instead.
-      # HPC: uncomment and mount your SSH private key; set CLUSTER_SSH_KEY_HOST_PATH in .env
-      # - ${CLUSTER_SSH_KEY_HOST_PATH:?Set CLUSTER_SSH_KEY_HOST_PATH to your key file}:/root/.ssh/id_cluster:ro
+      # ARC service key (read-only) — set CLUSTER_SSH_KEY_HOST_PATH in .env
+      - ${CLUSTER_SSH_KEY_HOST_PATH:?Set CLUSTER_SSH_KEY_HOST_PATH to your key file}:/root/.ssh/id_cluster:ro
 
   celery-worker:
     build:
@@ -114,8 +114,8 @@ services:
       FLUENT_MODULE: "${FLUENT_MODULE:-ANSYS/2025R1}"
     volumes:
       - ./backend/app:/app/app
-      # HPC: uncomment and mount your SSH private key; set CLUSTER_SSH_KEY_HOST_PATH in .env
-      # - ${CLUSTER_SSH_KEY_HOST_PATH:?Set CLUSTER_SSH_KEY_HOST_PATH to your key file}:/root/.ssh/id_cluster:ro
+      # ARC service key (read-only) — set CLUSTER_SSH_KEY_HOST_PATH in .env
+      - ${CLUSTER_SSH_KEY_HOST_PATH:?Set CLUSTER_SSH_KEY_HOST_PATH to your key file}:/root/.ssh/id_cluster:ro
     depends_on:
       postgres:
         condition: service_healthy
