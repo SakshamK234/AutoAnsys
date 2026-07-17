@@ -143,10 +143,42 @@ yes
 (display "=== MESH ZONE LIST ===")(newline)
 /define/boundary-conditions/list-zones
 
-/file/write-case "{{ workspace }}/mesh.cas.h5"
+{% if solver is defined and solver %}
+; ══════════════════════════════════════════════════════════════════════
+; COMBINED PATH — continue into the solver phase in the same session
+; (mesh is already in memory and switched to solution mode by the classify/
+; carve block). Mirrors the validated fc28 combined full-car journal: BCs on
+; the classified zones → solution methods → reports → iterate → contours.
+; ══════════════════════════════════════════════════════════════════════
+{% include '_bc_block.jou.j2' %}
+{% include '_solution_methods.jou.j2' %}
+{% include '_reports_block.jou.j2' %}
 
+{% if solver.initialization | default("hybrid") == "hybrid-absolute" %}
+/solve/initialize/set-hyb-initialization/reference-frame absolute
+/solve/initialize/hyb-initialization yes
+{% else %}
+/solve/init/hyb-init
+{% endif %}
+/file/write-case "{{ workspace }}/setup.cas.h5"
+/solve/iterate {{ solver.convergence.max_iterations | default(750) }}
+{% if solver.data_export.case_data | default(true) %}
+/file/write-case-data "{{ workspace }}/result.cas.h5"
+{% endif %}
+; NOTE: no contour block here. This session runs under `-meshing -g`, which
+; has no graphics subsystem, so `display save-picture` does not exist (fc28).
+; Contours are rendered from result.cas.h5 by a follow-up `-gu -driver null`
+; pass (download_results triggers it) — never inline in the combined session.
+(display "COMBINED_SOLVE_COMPLETE")(newline)
+/exit yes
+{% else %}
+; ══════════════════════════════════════════════════════════════════════
+; MESH-ONLY (split workflow) — persist the mesh; a separate solver job reads
+; mesh.cas.h5 (zones already named/typed by the classify/carve block).
+; ══════════════════════════════════════════════════════════════════════
+/file/write-case "{{ workspace }}/mesh.cas.h5"
 (display "=== MESH_CELL_COUNT_BEGIN ===")(newline)
 /mesh/size-info
 (display "=== MESH_CELL_COUNT_END ===")(newline)
-
 /exit yes
+{% endif %}

@@ -36,6 +36,13 @@ class JournalGenerator:
         Runs entirely within one `fluent 3ddp -meshing` session.
         The mesh stays in memory — no file write/read needed between phases.
 
+        The template is chosen by ``mesh_config['workflow']`` — watertight uses
+        mesh_watertight.jou.j2; fault-tolerant uses mesh_fault_tolerant.jou.j2,
+        which continues into the solver phase (instead of writing a standalone
+        mesh) when a ``solver`` context is present. Both are single-session,
+        mesh-in-memory (no file write/read between phases). This mirrors the
+        validated fc28 combined full-car journal.
+
         Args:
             mesh_config: Mesh configuration dictionary.
             solver_config: Solver configuration dictionary.
@@ -44,7 +51,17 @@ class JournalGenerator:
             cfd_mode: "individual_part" or "full_car" — toggles wheel BCs and
                 full-car-specific workflow steps per the team SOPs.
         """
-        template = self.env.get_template("mesh_watertight.jou.j2")
+        workflow = (mesh_config or {}).get("workflow", "watertight")
+        template_name = {
+            "watertight": "mesh_watertight.jou.j2",
+            "fault-tolerant": "mesh_fault_tolerant.jou.j2",
+        }.get(workflow)
+        if template_name is None:
+            raise ValueError(
+                f"Unknown mesh workflow {workflow!r}; "
+                f"expected 'watertight' or 'fault-tolerant'"
+            )
+        template = self.env.get_template(template_name)
         return template.render(
             mesh=mesh_config,
             solver=solver_config,

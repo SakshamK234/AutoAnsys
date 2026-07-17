@@ -50,6 +50,11 @@ _SLURM_STATE_MAP = {
     "PREEMPTED": JobStatus.cancelled,
 }
 
+# A queued job with no SLURM id after this many seconds has a lost submission
+# task (dropped from the broker, e.g. enqueued while the worker was down); the
+# poller re-drives it. Comfortably longer than a real submit (SFTP + sbatch).
+_RESUBMIT_STALE_SECONDS = 150
+
 
 def _utcnow_naive() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -117,6 +122,12 @@ def submit_job_to_cluster(self, job_id: str) -> dict:
 
         if job.status != JobStatus.queued:
             return {"job_id": job_id, "error": f"Job is in '{job.status.value}' state, expected queued"}
+
+        # Idempotency guard: if a SLURM id is already set, this job was already
+        # submitted (e.g. the poller re-drove a submit that had actually run) —
+        # do not sbatch a second time.
+        if job.slurm_job_id:
+            return {"job_id": job_id, "slurm_job_id": job.slurm_job_id, "note": "already submitted"}
 
         geometry = db.query(Geometry).filter(Geometry.id == job.geometry_id).first()
         if not geometry:
@@ -293,6 +304,20 @@ def poll_active_jobs() -> dict:
             updated = 0
             for job in active:
                 if not job.slurm_job_id:
+                    # No SLURM id: the submission task never set one. If the job
+                    # has been queued longer than the submit should ever take,
+                    # its submit task was lost (e.g. enqueued while the worker
+                    # was down, then dropped) — re-drive it. submit_job_to_cluster
+                    # re-checks status and no-ops if a SLURM id already exists,
+                    # so re-enqueue is safe against a merely-slow submit.
+                    if job.submitted_at is not None:
+                        age = (_utcnow_naive() - job.submitted_at).total_seconds()
+                        if age > _RESUBMIT_STALE_SECONDS:
+                            logger.warning(
+                                "Job %s queued %.0fs with no SLURM id — re-driving "
+                                "lost submission", job.id, age,
+                            )
+                            submit_job_to_cluster.delay(str(job.id))
                     continue
 
                 try:

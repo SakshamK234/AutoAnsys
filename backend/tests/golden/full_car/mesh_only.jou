@@ -296,10 +296,12 @@ quit
 (display "=== MESH ZONE LIST ===")(newline)
 /define/boundary-conditions/list-zones
 
+; ══════════════════════════════════════════════════════════════════════
+; MESH-ONLY (split workflow) — persist the mesh; a separate solver job reads
+; mesh.cas.h5 (zones already named/typed by the classify/carve block).
+; ══════════════════════════════════════════════════════════════════════
 /file/write-case "/scratch/<user>/autoansys/jobs/<full_car_job>/mesh.cas.h5"
-
 (display "=== MESH_CELL_COUNT_BEGIN ===")(newline)
 /mesh/size-info
 (display "=== MESH_CELL_COUNT_END ===")(newline)
-
 /exit yes
