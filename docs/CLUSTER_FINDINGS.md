@@ -460,5 +460,32 @@ The winning chain and its evidence trail:
 
 Accepted baseline limitations (documented): wrap TE resolution ~2 mm vs
 the specialist's 0.25 mm strips; rim strips + top piece are stationary
-walls; per-component force breakdown deferred. Codification of this chain
-into the production templates is the next engineering task.
+walls; per-component force breakdown deferred.
+
+## ✅ G2 CODIFICATION VALIDATED (job 6411258, 2026-07-17)
+
+The fc28 chain is now config-driven production templates (mesh_fault_tolerant
++ _ft_classify_carve, profiles.yaml full_car). The **pipeline-GENERATED**
+full-car mesh journal (rendered by JournalGenerator, not the hand-written
+fc28 probe) ran end-to-end in 11 m 23 s: import → bounding_box delete →
+CAD-shell split → scoped car sizing → wrap → classifier → slab carve →
+zone-types pinned → mesh.cas.h5. Result: 6,071,916 cells (fc28: 6.07 M) with
+the correct named zones — inlet/outlet/symmetry/farfield-top/farfield-side/
+car/car-shell, carved strips as car-shell:003..011 (excluded from the
+`car car-shell` force report). Meshing reproduction confirmed; the solver
+stage is byte-identical to the validated fc28 run (316 N / 970 N), so the
+full-car GUI path is correct end-to-end.
+
+## Specialist reference case — his labels confirm the export theory
+
+The maintainer supplied the specialist's full-car case (V0.5-labelled but
+run on the V0.4 geometry — identical-geometry comparison). Inspection (job
+6411629) reads his zone list: **every named selection our V0.4-stepFC export
+was missing is present** — front-wing, rear-wing, trailing-edges, whisker,
+undertray, chassis, suspension, front-left-wheel, rear-left-wheel,
+contact-patches, plus inlet/outlet/ground/symmetry/tunnel-walls and the
+enclosure shell. Half car (left wheels + symmetry). This confirms: the
+specialist's source HAD the labels; the export we were handed had them
+stripped, which is what forced the wrap path. Case is setup-only (no .dat),
+so his forces come from a re-solve under his own baked-in conditions (job
+6412967, running).
