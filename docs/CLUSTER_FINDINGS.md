@@ -371,3 +371,29 @@ comparison-grade. Watertight `Add Local Sizing` supports
 BOICurvatureNormalAngle/BOICellsPerGap — Meshing.fdl) as the surgical TE
 substitute: min 0.25 scoped to the wing faces resolves the wedge without
 meshing the whole car at 0.25.
+
+## ✅ Full-car FT/wrap chain — MECHANICS VALIDATED (fc8/fc9, 2026-07-17)
+
+fc8 (job 6399932): production `mesh_fault_tolerant.jou.j2` rendered by the
+real generator for the car. Two findings: (1) **FT import truncates object
+names at the first dot** — 'v0.4-step-enclosure' becomes object `v0`
+(export geometry without dots in names!); (2) picking the wrong wrap seed
+(`bounding_box`, whose centroid sits at the car) fails fast and clean:
+"Wrap region tunnel-fluid is placed too close to the geometry" (69 s).
+
+fc9 (job 6399977): pick corrected to `v0` → **the ENTIRE chain ran
+end-to-end in 1 m 23 s**: import (44 objects) → VWT → CEFB(v0, wrap) →
+material point (centroid of the fluid body, lands in open fluid) → wrap →
+regions → boundaries → prisms → volume → `mesh.cas.h5` (4.3 MB). Zone list:
+`tunnel-fluid` cell zone + per-component wall zones (wheels.N.1,
+rear_wing.N.1, driver_model.1.1, …) — the wrap is IMMUNE to the TE slivers
+and duplicate solids that killed the Watertight path on this export, and it
+preserves per-component zones for force breakdowns. BUT: workflow-default
+sizing gave only **89,099 cells** — uselessly coarse for aero (the wing
+alone was 222k).
+
+fc10 (job 6400064) tests the flagged [needs-cluster] item: scoped
+curvature+proximity controls (AddLocalSizingFTM children, min 2 / max 16 mm,
+CellsPerGap 3) on the CAR objects only, ON TOP of the default control set
+(probes 6377338+ proved 'Custom' REPLACES defaults and degenerates the
+wrap — this adds children without touching CMCO).
