@@ -337,6 +337,15 @@ re-export (HOOPS 24.6.0) is structurally a different package: face labels
 stripped, redundant solids added. A 1:1 replay needs the specialist's
 original `V0.4-step.stp`.
 
+fc6 (job 6395062) tested the `UseBodyLabels: 'Yes'` import-argument theory
+(STEP leaf body names hyphenate to exactly the specialist's short labels):
+the argument is ACCEPTED but the resulting label list is byte-identical to
+the default import — it reads body-level label *attributes* from the CAD
+(absent in this file), not body names. Theory falsified: with this file the
+specialist's short labels can only have come from manual GUI renaming/label
+creation before his recording started. The automated pipeline therefore
+adapts to the file's real names (fc5) instead of reproducing his.
+
 Fallback (if the original file is unavailable), sketched but NOT run:
 import all → delete the car-solid/bounding-box meshing objects → mesh only
 the enclosure. Costs: label-scoped controls are gone (wake boxes must use
