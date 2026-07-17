@@ -311,5 +311,40 @@ instance-7`, plus `v0.4-step-enclosure` (the fluid volume) and
 
 fc4 (job 6393124) = fc3 with label lists mapped to the real names (chassis
 group = instance-1 + 4 monocoque + 5 driver bodies; rear wing = 6 instances;
-undertray = 7; suspension = 12; whisker = 2) and the TE sizing dropped;
-writes `fc_v04_mesh.cas.h5` + zone list.
+undertray = 7; suspension = 12; whisker = 2) and the TE sizing dropped.
+Result: import → refinement regions → sizings → **surface mesh all passed**
+(~2.5 h), then Improve Surface Mesh hard-stopped: "surface mesh quality is 1
+… very sharp trailing edges … add a small chamfer".
+
+The per-zone skew table is the structural diagnosis:
+
+| zone | skewed >0.6 | max skew | faces |
+|---|---|---|---|
+| v0.4-step-enclosure (fluid body) | **1327** | **1.0** | 6.87 M |
+| vtm_27e-undertray-instance-34 | 9 | 1.0 | 2.31 M |
+| bounding-box-instance-44 | 0 | 0.52 | 3.23 M |
+| car solids (wings/wheels/susp/chassis) | ~0 | <0.66 | ~8.5 M |
+| **total (V0 region)** | 1346 | 1.0 | **21.7 M** |
+
+Plus "Found overlapping faces sharing edge …", free-faces warnings, and
+BOTH right wheels meshed as solids. Conclusion: **this export contains the
+fluid volume AND the whole car assembly as separate overlapping solids**
+(plus a redundant bounding-box body) — every car surface is meshed twice.
+The specialist's journal was written for a file containing ONLY the fluid
+body with face-level named selections on it (hence short labels,
+`trailing-edges`, and "only fluid regions with no voids"). The V0.4-stepFC
+re-export (HOOPS 24.6.0) is structurally a different package: face labels
+stripped, redundant solids added. A 1:1 replay needs the specialist's
+original `V0.4-step.stp`.
+
+Fallback (if the original file is unavailable), sketched but NOT run:
+import all → delete the car-solid/bounding-box meshing objects → mesh only
+the enclosure. Costs: label-scoped controls are gone (wake boxes must use
+the recording's absolute mm coordinates, which ARE in the journal), prisms
+can only scope to the whole enclosure label (tunnel faces included), and
+per-component force breakdown is lost — total forces would still be
+comparison-grade. Watertight `Add Local Sizing` supports
+`BOIExecution: 'Curvature'/'Proximity'` (BOIMinSize/BOIMaxSize/
+BOICurvatureNormalAngle/BOICellsPerGap — Meshing.fdl) as the surgical TE
+substitute: min 0.25 scoped to the wing faces resolves the wedge without
+meshing the whole car at 0.25.
