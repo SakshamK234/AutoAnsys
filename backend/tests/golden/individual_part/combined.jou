@@ -272,45 +272,30 @@ yes
 ; side-view slice is y=0 (imagery confirmed on job 6388594).
 (ti-menu-load-string "surface iso-surface y-coordinate midplane-y () () 0 ()")
 
-; Slice images look SIDEWAYS at the y=0 plane: camera on -y looking along +y,
-; z up ⇒ x right / z up, true side elevation. auto-scale frames the content.
+; DEFAULT VIEW ONLY. The camera/restore-view sequence renders EMPTY canvases
+; on real solved cases even with re-display + auto-scale (fc29p-fc31p, jobs
+; 6408623/6408669/6408714 — views apply per the axis triad but no content
+; draws under -driver null). The default view is the only rendering path
+; proven to produce content (acceptance-2 job 6388594 + fc31p). Sideways
+; framing remains an open polish item — do NOT reintroduce view commands
+; without a probe-validated recipe. Also: save-picture on an EXISTING file
+; raises an overwrite prompt that desyncs the journal (fc30p) — filenames
+; here are safe only because production workspaces are unique per job.
 (ti-menu-load-string "display objects create contour cont-velocity field velocity-magnitude surfaces-list midplane-y () quit")
 (ti-menu-load-string "display objects display cont-velocity")
-(ti-menu-load-string "views camera target 0 0 0")
-(ti-menu-load-string "views camera position 0 -5 0")
-(ti-menu-load-string "views camera up-vector 0 0 1")
-(ti-menu-load-string "display objects display cont-velocity")
-(ti-menu-load-string "views auto-scale")
 (ti-menu-load-string "display save-picture \"/scratch/<user>/autoansys/jobs/<individual_part_job>/contour_velocity_midplane.png\"")
 
 (ti-menu-load-string "display objects create contour cont-pressure field pressure surfaces-list midplane-y () quit")
 (ti-menu-load-string "display objects display cont-pressure")
-(ti-menu-load-string "views camera target 0 0 0")
-(ti-menu-load-string "views camera position 0 -5 0")
-(ti-menu-load-string "views camera up-vector 0 0 1")
-(ti-menu-load-string "display objects display cont-pressure")
-(ti-menu-load-string "views auto-scale")
 (ti-menu-load-string "display save-picture \"/scratch/<user>/autoansys/jobs/<individual_part_job>/contour_pressure_midplane.png\"")
 
 (ti-menu-load-string "display objects create contour cont-tke field turb-kinetic-energy surfaces-list midplane-y () quit")
 (ti-menu-load-string "display objects display cont-tke")
-(ti-menu-load-string "views camera target 0 0 0")
-(ti-menu-load-string "views camera position 0 -5 0")
-(ti-menu-load-string "views camera up-vector 0 0 1")
-(ti-menu-load-string "display objects display cont-tke")
-(ti-menu-load-string "views auto-scale")
 (ti-menu-load-string "display save-picture \"/scratch/<user>/autoansys/jobs/<individual_part_job>/contour_tke_midplane.png\"")
 
-; Pressure coefficient on the body walls — 3D surface, so an isometric camera
-; (a side view would show the body edge-on). Explicit camera because the
-; window still holds the sideways view from the slice images above.
+; Pressure coefficient on the body walls.
 (ti-menu-load-string "display objects create contour cont-cp field pressure-coefficient surfaces-list wall-body* () quit")
 (ti-menu-load-string "display objects display cont-cp")
-(ti-menu-load-string "views camera target 0 0 0")
-(ti-menu-load-string "views camera position 5 -5 5")
-(ti-menu-load-string "views camera up-vector 0 0 1")
-(ti-menu-load-string "display objects display cont-cp")
-(ti-menu-load-string "views auto-scale")
 (ti-menu-load-string "display save-picture \"/scratch/<user>/autoansys/jobs/<individual_part_job>/contour_cp.png\"")
 
 ; ── Done ──────────────────────────────────────────────────────────────
