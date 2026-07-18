@@ -119,9 +119,10 @@
 (%py-exec "workflow.TaskObject['Generate the Volume Mesh'].Execute()")
 (display "VOLUME_DONE")(newline)
 
-; Geometric boundary classification + slab carve (does its own
-; switch-to-solution-mode; leaves named zones inlet/outlet/symmetry/
-; farfield-*/car/car-shell ready for the solver BC block).
+; Geometric boundary classification (does its own switch-to-solution-mode;
+; leaves named tunnel-plane + body zones ready for the solver BC block).
+; carve_domain present → full-car (body touches ground → slab carve);
+; absent → component (part floats in the box → six clean box faces, no carve).
 ; ════════════════════════════════════════════════════════════════════════
 ; FT WRAP — AUTOMATED BOUNDARY ASSIGNMENT + SLAB CARVE (fc16→fc28)
 ; Included by mesh_fault_tolerant.jou.j2 between VOLUME_DONE and the mesh

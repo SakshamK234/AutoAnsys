@@ -152,10 +152,10 @@ def test_reference_density_is_set(profile: str, journal: str):
 @pytest.mark.parametrize("journal", ("solver_from_case.jou", "combined.jou"))
 def test_forces_are_body_scoped_not_wildcard(profile: str, journal: str):
     # AUDIT C3: force reports must target the body wall pattern, not all walls.
-    # individual_part uses 'wall-body*'; full_car integrates over the FT
-    # classifier's car zones ('car car-shell', fc28) — either way NEVER '*'.
+    # The FT classifier names the part 'body' (component) or 'car car-shell'
+    # (full car) — either way NEVER '*'.
     content = render_profile_artifacts(profile)[journal]
-    expected = "thread-names car car-shell" if profile == "full_car" else "thread-names wall-body*"
+    expected = "thread-names car car-shell" if profile == "full_car" else "thread-names body"
     assert expected in content
     assert "thread-names * ()" not in content  # no force report over every wall
 
@@ -237,20 +237,23 @@ def test_mesh_workflow_unknown_raises():
 
 
 def test_per_profile_mesh_workflow():
-    # individual_part = Watertight (wing SOP path). full_car = the validated
-    # fault-tolerant WRAP recipe (fc13→fc28): junk-body deletion, pre-wrap
-    # CAD-shell split, scoped car sizing, geometric classifier + slab carve.
-    # None of the FT full-car pieces may leak into the component path.
+    # Both profiles run the fault-tolerant WRAP + geometric classifier on raw
+    # (unlabelled) geometry. individual_part = component classifier (part floats
+    # → six clean box faces, NO carve). full_car = fc13→fc28 recipe (junk-body
+    # delete, pre-wrap split, ground fuses → slab carve). The full-car-only
+    # pieces must never leak into the component path.
     comp = render_profile_artifacts("individual_part")["mesh_only.jou"]
     full = render_profile_artifacts("full_car")["mesh_only.jou"]
-    assert "Watertight Geometry" in comp
+    assert "Fault-tolerant Meshing" in comp
     assert "Fault-tolerant Meshing" in full
+    # Both classify.
+    assert "CLASSIFY_BEGIN" in comp and "CLASSIFY_BEGIN" in full
+    # Component names the box faces + merges the part into 'body', no carve.
+    assert "' body' + q" in comp or "zone-name ' + str(body[0]) + ' body'" in comp
+    # Full-car-only pieces stay out of the component path.
     for marker in (
         "/objects/delete bounding_box ()",
         "boundary separate sep-face-zone-by-angle 6 40",
-        "'SizingType': r'curvature'",
-        "'SizingType': r'proximity'",
-        "CLASSIFY_BEGIN",
         "car-shell",
         "/mesh/modify-zones/sep-face-zone-mark car-shell ground_slab yes",
     ):
@@ -260,11 +263,11 @@ def test_per_profile_mesh_workflow():
 
 def test_prism_layer_count_from_config():
     # AUDIT C6: volume_mesh.num_layers must reach the Add Boundary Layers task
-    # in the WATERTIGHT path (it was previously ignored). The fault-tolerant/VWT
-    # path currently uses the ARC-proven bare 'Generate Boundary Layers' —
-    # wiring num_layers there needs the FTM Add Boundary Layers child pattern,
-    # which is a flagged cluster-validation item (docs/CLUSTER_FINDINGS.md).
-    mesh = render_profile_artifacts("individual_part")["mesh_only.jou"]
+    # in the WATERTIGHT path (it was previously ignored). Both profiles now
+    # default to fault-tolerant, so render watertight explicitly.
+    gen = JournalGenerator()
+    mesh_cfg = {**example_config("individual_part")["mesh"], "workflow": "watertight"}
+    mesh = gen.generate_mesh_journal(mesh_cfg, "g", "/ws")
     assert "'NumberOfLayers': 15" in mesh
 
 
@@ -304,7 +307,9 @@ def test_first_layer_height_opt_in():
     # F9: FirstHeight is emitted only when first_layer_height_mm is set, so the
     # proven SOP prism defaults are untouched otherwise.
     gen = JournalGenerator()
-    base = example_config("individual_part")["mesh"]
+    # Watertight-path feature (Add Boundary Layers FirstHeight); both profiles
+    # now default to FT, so render watertight explicitly.
+    base = {**example_config("individual_part")["mesh"], "workflow": "watertight"}
 
     def commands(journal: str) -> str:
         # Command lines only — template comments mention FirstHeight too.

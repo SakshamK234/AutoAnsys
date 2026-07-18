@@ -38,13 +38,19 @@ def test_individual_part_preset_values():
     assert p["reference_values"]["area_m2"] == 1.2
     assert p["convergence"]["max_iterations"] == 300
     bc = p["boundary_conditions"]
+    # FT component classifier zone names (probe33): inlet/outlet/symmetry +
+    # farfield-top/side (slip) + ground/body (stationary walls). No moving
+    # ground / rotating parts.
     assert bc["velocity_inlets"][0]["zone_name"] == "inlet"
     assert bc["velocity_inlets"][0]["velocity"] == 15.65
     assert bc["pressure_outlets"][0]["zone_name"] == "outlet"
-    assert bc["translating_walls"][0]["zone_name"] == "ground"
-    assert bc["translating_walls"][0]["direction_x"] == -1.0
+    assert not bc.get("translating_walls")
+    slip = {s["zone_name"] for s in bc["slip_walls"]}
+    assert slip == {"farfield-top", "farfield-side"}
+    walls = {w["zone_name"] for w in bc["stationary_walls"]}
+    assert walls == {"ground", "body"}
     assert bc["symmetry_planes"][0]["zone_name"] == "symmetry"
-    assert bc["stationary_walls"][0]["zone_name"] == "walls"
+    assert p["reporting"]["body_wall_pattern"] == "body"
     # Component is run half-domain with a symmetry plane → doubling factor (C1).
     assert p["symmetry"]["force_factor"] == 2.0
 
@@ -83,10 +89,16 @@ def test_per_profile_slurm_presets():
 
 
 def test_per_profile_mesh_workflow():
-    # individual_part = Watertight (wing SOP). full_car = the validated
-    # fault-tolerant WRAP recipe (fc13→fc28): junk-body deletion, pre-wrap
-    # shell split, scoped car sizing, geometric classifier + slab carve.
-    assert resolve_profile("individual_part")["mesh"]["workflow"] == "watertight"
+    # Both profiles run fault-tolerant WRAP + geometric classifier on raw
+    # geometry. Component = classify, NO carve (part floats). Full car =
+    # fc13→fc28 recipe: junk-body delete, pre-wrap split, scoped sizing,
+    # classify + slab carve (ground fuses with the wheels).
+    comp = resolve_profile("individual_part")["mesh"]
+    assert comp["workflow"] == "fault-tolerant"
+    assert comp["classify_boundaries"] is True
+    assert comp.get("carve_domain") is None
+    assert not comp.get("delete_bodies")
+    assert comp["scoped_sizing"]["min_size"] == 2.0
     full = resolve_profile("full_car")["mesh"]
     assert full["workflow"] == "fault-tolerant"
     assert full["delete_bodies"] == ["bounding_box"]

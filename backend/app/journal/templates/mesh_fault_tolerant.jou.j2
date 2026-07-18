@@ -127,10 +127,15 @@
 (display "VOLUME_DONE")(newline)
 
 {% if mesh.classify_boundaries | default(false) %}
-; Geometric boundary classification + slab carve (does its own
-; switch-to-solution-mode; leaves named zones inlet/outlet/symmetry/
-; farfield-*/car/car-shell ready for the solver BC block).
+; Geometric boundary classification (does its own switch-to-solution-mode;
+; leaves named tunnel-plane + body zones ready for the solver BC block).
+; carve_domain present → full-car (body touches ground → slab carve);
+; absent → component (part floats in the box → six clean box faces, no carve).
+{% if mesh.carve_domain %}
 {% include '_ft_classify_carve.jou.j2' %}
+{% else %}
+{% include '_ft_classify_component.jou.j2' %}
+{% endif %}
 {% else %}
 ; ══════════════════════════════════════════════════════════════════════
 ; Persist the mesh as a solver-readable case file (same artifact contract as

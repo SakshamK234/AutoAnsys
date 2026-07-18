@@ -47,9 +47,27 @@ profiles:
       cores_per_node: 128
       memory_gb: 243
       walltime_hours: 6
-    # Clean single part → Watertight workflow.
+    # Fault-tolerant WRAP + geometric component classifier — the wing-validated
+    # path (probe33 → wing_probe33 → acceptance job 6388127/6388594). A raw part
+    # Parasolid has NO Discovery face labels, so the watertight path can't name
+    # the tunnel boundaries; the wrap + classifier name them by position
+    # (inlet/outlet/ground/farfield-top/symmetry/farfield-side) and merge the
+    # part faces into 'body'. carve_domain is intentionally ABSENT: a component
+    # floats in the box (no ground fusion → no slab carve).
     mesh:
-      workflow: watertight
+      workflow: fault-tolerant
+      classify_boundaries: true
+      # Scoped curvature+proximity sizing on the part (mm) — the wrap default
+      # is too coarse for a thin aero surface.
+      scoped_sizing:
+        min_size: 2.0
+        max_size: 16.0
+        growth_rate: 1.2
+        curvature_normal_angle: 18.0
+        cells_per_gap: 3
+    # Forces integrate over the classifier's merged part zone.
+    reporting:
+      body_wall_pattern: "body"
     boundary_conditions:
       velocity_inlets:
         - zone_name: inlet
@@ -59,14 +77,14 @@ profiles:
       pressure_outlets:
         - zone_name: outlet
           gauge_pressure: 0.0
-      translating_walls:
-        - zone_name: ground
-          velocity_mps: 15.65
-          direction_x: -1.0
-          direction_y: 0.0
-          direction_z: 0.0
+      # Tunnel top + far side are frictionless (slip) walls; ground + body stay
+      # stationary no-slip walls (matches acceptance-2's validated setup).
+      slip_walls:
+        - zone_name: farfield-top
+        - zone_name: farfield-side
       stationary_walls:
-        - zone_name: walls
+        - zone_name: ground
+        - zone_name: body
       symmetry_planes:
         - zone_name: symmetry
 

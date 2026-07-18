@@ -115,6 +115,15 @@ def _wake_box(name: str, labels: list[str], **ratios: float) -> dict:
 # abandoned (sliver trailing edges); the wrap is immune to slivers + duplicate
 # solids and produces the classifier's car/car-shell + tunnel-plane zones.
 _MESH_OVERRIDES: dict = {
+    # Component: FT wrap + geometric classifier (no carve — the part floats).
+    "individual_part": {
+        "workflow": "fault-tolerant",
+        "classify_boundaries": True,
+        "scoped_sizing": {
+            "min_size": 2.0, "max_size": 16.0, "growth_rate": 1.2,
+            "curvature_normal_angle": 18.0, "cells_per_gap": 3,
+        },
+    },
     "full_car": {
         "workflow": "fault-tolerant",
         "geometry_unit": "mm",
@@ -226,13 +235,21 @@ _INDIVIDUAL_PART_SOLVER: dict = {
         "near_wall_treatment": "auto",
         "curvature_correction": True,
     },
+    # BCs reference the FT component classifier's zone names (probe33):
+    # inlet/outlet/symmetry + farfield-top/side (slip) + ground/body (walls).
     "boundary_conditions": {
         "velocity_inlets": [_inlet()],
         "pressure_outlets": [{"zone_name": "outlet", "gauge_pressure": 0.0}],
-        "translating_walls": [_ground()],
+        "translating_walls": [],
         "rotating_walls": [],
-        "slip_walls": [],
-        "stationary_walls": [{"zone_name": "walls"}],
+        "slip_walls": [
+            {"zone_name": "farfield-top"},
+            {"zone_name": "farfield-side"},
+        ],
+        "stationary_walls": [
+            {"zone_name": "ground"},
+            {"zone_name": "body"},
+        ],
         "symmetry_planes": [{"zone_name": "symmetry"}],
     },
     "solution_methods": copy.deepcopy(_SOLUTION_METHODS),
@@ -248,7 +265,8 @@ _INDIVIDUAL_PART_SOLVER: dict = {
         "area_m2": 1.2, "length_m": 2.8, "velocity_mps": 15.65, "density_kg_m3": 1.225,
     },
     "symmetry": copy.deepcopy(_SYMMETRY),
-    "reporting": copy.deepcopy(_REPORTING),
+    # Forces integrate over the classifier's merged part zone.
+    "reporting": {**copy.deepcopy(_REPORTING), "body_wall_pattern": "body"},
     "initialization": "hybrid",
 }
 
