@@ -155,10 +155,14 @@
 (%py-exec "[ren.__setitem__(z, n + '-' + str(i + 1)) for n, zs in groups.items() for i, z in enumerate(zs)]")
 (%py-exec "[meshing_utilities.rename_face_zone(zone_id=int(z), new_name=nm) for z, nm in ren.items()]")
 (%py-exec "print('RENAMED', len(ren), 'fragments across', len(groups), 'groups')")
+; Zone-name ARGUMENTS in modify-zones prompts are SCHEME-EVALUATED: numeric
+; ids self-evaluate (why id-based merges always worked) but bare names parse
+; as unbound symbols ("eval: unbound variable body-1", job 6442835). Names
+; must be written as escaped quoted strings inside the ti-menu string.
 (%py-exec "f = open(r'/scratch/<user>/autoansys/jobs/<individual_part_job>/assign.scm', 'w')")
-(%py-exec "q = chr(34); nl = chr(10)")
-(%py-exec "[f.write('(ti-menu-load-string ' + q + '/mesh/modify-zones/merge-zones ' + ' '.join(n + '-' + str(i + 1) for i in range(len(zs))) + ' ()' + q + ')' + nl) for n, zs in sorted(groups.items()) if len(zs) > 1]")
-(%py-exec "[f.write('(ti-menu-load-string ' + q + '/mesh/modify-zones/zone-name ' + n + '-1 ' + n + q + ')' + nl) for n, zs in sorted(groups.items())]")
+(%py-exec "q = chr(34); nl = chr(10); eq = chr(92) + chr(34)")
+(%py-exec "[f.write('(ti-menu-load-string ' + q + '/mesh/modify-zones/merge-zones ' + ' '.join(eq + n + '-' + str(i + 1) + eq for i in range(len(zs))) + ' ()' + q + ')' + nl) for n, zs in sorted(groups.items()) if len(zs) > 1]")
+(%py-exec "[f.write('(ti-menu-load-string ' + q + '/mesh/modify-zones/zone-name ' + eq + n + '-1' + eq + ' ' + eq + n + eq + q + ')' + nl) for n, zs in sorted(groups.items())]")
 (%py-exec "f.close()")
 (display "CLASSIFIER_DONE")(newline)
 
