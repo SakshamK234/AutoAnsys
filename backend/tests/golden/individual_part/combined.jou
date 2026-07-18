@@ -143,28 +143,29 @@
 (%py-exec "assert body, 'no body zones left after classifying the box faces'")
 (%py-exec "groups = {n: sorted(z for z, v in names.items() if v == n) for n in set(names.values())}")
 (%py-exec "groups['body'] = body")
-; [needs-cluster] MERGE STAGE UNRESOLVED. The classification above is correct
-; (finds all six box faces by geometry, comp val 6415527), but merging the
-; classified zones is not yet solved for this wrap:
-;   • solver-mode merge after the switch (full-car carve path) fails — this
-;     wrap kept some box faces on LOW CAD zone IDs that switch-to-solution-mode
-;     renumbers ("Invalid Zone name", 6415334);
-;   • meshing-mode merge_face_zones (below) fails — the wrap fragments the part
-;     into 218 zones spread across different mesh OBJECTS, and meshing-mode
-;     merge cannot cross objects (6415527).
-; probe33 (the wing acceptance) avoided this with coarser sizing + a narrow
-; zone-name filter that isolated 6 clean box faces. The robust fix is likely
-; a solver-mode merge-by-name-pattern after a meshing-mode unique rename, or
-; flattening the object structure before merge — to be validated. Until then
-; the component GUI path on RAW (unlabelled) geometry is not production-ready.
-(%py-exec "[meshing_utilities.rename_face_zone(zone_id=int(z), new_name='tmpc_' + n + '_' + str(z)) for n, zs in groups.items() for z in zs]")
-(%py-exec "[meshing_utilities.merge_face_zones(face_zone_name_pattern='tmpc_' + n + '_*') for n in groups]")
-(%py-exec "[meshing_utilities.rename_face_zone(zone_id=int(meshing_utilities.get_face_zones(filter='tmpc_' + n + '_*')[0]), new_name=n) for n in groups]")
-(%py-exec "print('RENAMED_OK:', [n for n in groups if meshing_utilities.get_face_zones(filter=n)])")
+; MERGE STRATEGY (v4, after two dead ends — jobs 6415334/6415527/6417436):
+; ids do NOT survive switch-to-solution-mode (low CAD ids get renumbered) but
+; NAMES do; and meshing-mode merge cannot cross mesh objects while solver-mode
+; merge can. So: give every fragment a UNIQUE name here in meshing mode
+; (rename_face_zone is proven safe), then merge BY NAME in solver mode via the
+; assign.scm. Fragment lists are ascending-id; the merge survivor keeps the
+; lowest id (fc28 evidence), so the '<group>-1' fragment is renamed to the
+; final group name after each merge.
+(%py-exec "ren = {}")
+(%py-exec "[ren.__setitem__(z, n + '-' + str(i + 1)) for n, zs in groups.items() for i, z in enumerate(zs)]")
+(%py-exec "[meshing_utilities.rename_face_zone(zone_id=int(z), new_name=nm) for z, nm in ren.items()]")
+(%py-exec "print('RENAMED', len(ren), 'fragments across', len(groups), 'groups')")
+(%py-exec "f = open(r'/scratch/<user>/autoansys/jobs/<individual_part_job>/assign.scm', 'w')")
+(%py-exec "q = chr(34); nl = chr(10)")
+(%py-exec "[f.write('(ti-menu-load-string ' + q + '/mesh/modify-zones/merge-zones ' + ' '.join(n + '-' + str(i + 1) for i in range(len(zs))) + ' ()' + q + ')' + nl) for n, zs in sorted(groups.items()) if len(zs) > 1]")
+(%py-exec "[f.write('(ti-menu-load-string ' + q + '/mesh/modify-zones/zone-name ' + n + '-1 ' + n + q + ')' + nl) for n, zs in sorted(groups.items())]")
+(%py-exec "f.close()")
 (display "CLASSIFIER_DONE")(newline)
 
 switch-to-solution-mode
 yes
+
+(load "/scratch/<user>/autoansys/jobs/<individual_part_job>/assign.scm")
 (display "ASSIGN_LOADED")(newline)
 
 ; Pin flow-boundary zone TYPES into the mesh so the shared solver BC block
