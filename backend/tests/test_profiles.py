@@ -26,9 +26,10 @@ def test_defaults_are_merged_in():
         resolved = resolve_profile(mode)
         assert resolved["turbulence"]["model"] == "k-omega-sst"
         assert resolved["turbulence"]["curvature_correction"] is True
-        # `velocity_mps` comes from defaults.reference_values and merges with the
-        # profile's own `area_m2`/`length_m` overrides.
-        assert resolved["reference_values"]["velocity_mps"] == 15.65
+        # `velocity_mps` comes from defaults.reference_values; full_car
+        # overrides it with the specialist-matched 17.88 m/s.
+        expected_v = 17.88 if mode == "full_car" else 15.65
+        assert resolved["reference_values"]["velocity_mps"] == expected_v
         assert "area_m2" in resolved["reference_values"]
         assert "length_m" in resolved["reference_values"]
 
@@ -63,11 +64,18 @@ def test_full_car_preset_values():
     assert p["reference_values"]["length_m"] == 1.5367
     assert p["convergence"]["max_iterations"] == 750
     bc = p["boundary_conditions"]
-    # FT classifier zone names (fc28), BASELINE BCs: the car body is the merged
-    # 'car' + 'car-shell' stationary walls; tunnel top/side are slip walls; NO
-    # rotating wheels / moving ground yet (pending specialist conditions).
-    assert not bc.get("rotating_walls")
-    assert not bc.get("translating_walls")
+    # FT classifier zone names + SPECIALIST-MATCHED conditions (job 6412967):
+    # 17.88 m/s freestream, moving ground at freestream, wheels rotating at
+    # 88 rad/s; car body = merged 'car' + 'car-shell' walls; tunnel top/side
+    # slip walls.
+    assert p["reference_values"]["velocity_mps"] == 17.88
+    assert bc["velocity_inlets"][0]["velocity"] == 17.88
+    assert bc["translating_walls"][0]["zone_name"] == "ground"
+    assert bc["translating_walls"][0]["velocity_mps"] == 17.88
+    wheels = {w["zone_name"]: w for w in bc["rotating_walls"]}
+    assert set(wheels) == {"front-left-wheel", "rear-left-wheel"}
+    assert wheels["front-left-wheel"]["omega_rad_s"] == 88.0
+    assert wheels["front-left-wheel"]["axis_y"] == 1.0
     walls = {w["zone_name"] for w in bc["stationary_walls"]}
     assert walls == {"car", "car-shell"}
     slip = {s["zone_name"] for s in bc["slip_walls"]}
@@ -77,8 +85,8 @@ def test_full_car_preset_values():
     assert p["symmetry"]["half_model"] is True
     assert p["symmetry"]["force_factor"] == 2.0
     assert bc["pressure_outlets"][0]["zone_name"] == "outlet"
-    # Forces integrate over the classifier's car zones.
-    assert p["reporting"]["body_wall_pattern"] == "car car-shell"
+    # Forces integrate over the classifier's car zones + separate wheels.
+    assert p["reporting"]["body_wall_pattern"] == "car car-shell front-left-wheel rear-left-wheel"
 
 
 def test_per_profile_slurm_presets():

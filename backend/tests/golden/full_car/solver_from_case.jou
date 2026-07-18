@@ -41,7 +41,7 @@
 ; density is required for physical force COEFFICIENTS (AUDIT C4 — was unset).
 /report/reference-values/area 1.0
 /report/reference-values/length 1.5367
-/report/reference-values/velocity 15.65
+/report/reference-values/velocity 17.88
 /report/reference-values/density 1.225
 
 ; ── Turbulence Model ──────────────────────────────────────────────────
@@ -50,13 +50,19 @@
 
 
 ; ── Velocity inlets ───────────────────────────────────────────────────
-/define/boundary-conditions/velocity-inlet inlet no no yes yes no 15.65 no 0. no no yes 5.0 10.0
+/define/boundary-conditions/velocity-inlet inlet no no yes yes no 17.88 no 0. no no yes 5.0 10.0
 
 ; ── Rotating walls (wheels) ──────────────────────────────────────────
 ; TUI: zone yes motion-bc-moving no no yes yes no no 0. no 0.5 no <ω> <ox> <oy> <oz> <ax> <ay> <az>
+/define/boundary-conditions/zone-type front-left-wheel wall
+/define/boundary-conditions/wall front-left-wheel yes motion-bc-moving no no yes yes no no 0. no 0.5 no 88.0 1.5122 0.612 0.2039 0.0 1.0 0.0
+/define/boundary-conditions/zone-type rear-left-wheel wall
+/define/boundary-conditions/wall rear-left-wheel yes motion-bc-moving no no yes yes no no 0. no 0.5 no 88.0 -0.0198 0.612 0.2039 0.0 1.0 0.0
 
 ; ── Translating walls (e.g. moving ground) ───────────────────────────
 ; TUI: zone yes motion-bc-moving no no yes no no <vel> <dx> <dy> <dz> no no 0. no 0.5
+/define/boundary-conditions/zone-type ground wall
+/define/boundary-conditions/wall ground yes motion-bc-moving no no yes no no 17.88 -1.0 0.0 0.0 no no 0. no 0.5
 
 ; ── Slip / specified-shear walls (tunnel walls, contact patches) ─────
 ; TUI: zone no yes shear-bc-spec-shear no no 0. no 0.5 no 0. no 0. no 0.
@@ -112,9 +118,9 @@
 ; 2025R1-validated (probes 6380332/6380354): force defs take force-vector +
 ; thread-names; the MOMENT def takes `mom-center` + `mom-axis` (the older
 ; `moment-vector`/`moment-center` pair is rejected).
-/solve/report-definitions/add drag_force force force-vector 1 0 0 thread-names car car-shell () quit
-/solve/report-definitions/add lift_force force force-vector 0 0 1 thread-names car car-shell () quit
-/solve/report-definitions/add mom_y moment mom-center 0.0 0.0 0.0 mom-axis 0 1 0 thread-names car car-shell () quit
+/solve/report-definitions/add drag_force force force-vector 1 0 0 thread-names car car-shell front-left-wheel rear-left-wheel () quit
+/solve/report-definitions/add lift_force force force-vector 0 0 1 thread-names car car-shell front-left-wheel rear-left-wheel () quit
+/solve/report-definitions/add mom_y moment mom-center 0.0 0.0 0.0 mom-axis 0 1 0 thread-names car car-shell front-left-wheel rear-left-wheel () quit
 
 ; ── Report Files ──────────────────────────────────────────────────────
 ; Residuals: `report-files/add ... report-type iteration` is NOT valid 2025R1
@@ -201,7 +207,7 @@
 (ti-menu-load-string "display save-picture \"/scratch/<user>/autoansys/jobs/<full_car_job>/contour_tke_midplane.png\"")
 
 ; Pressure coefficient on the body walls.
-(ti-menu-load-string "display objects create contour cont-cp field pressure-coefficient surfaces-list car car-shell () quit")
+(ti-menu-load-string "display objects create contour cont-cp field pressure-coefficient surfaces-list car car-shell front-left-wheel rear-left-wheel () quit")
 (ti-menu-load-string "display objects display cont-cp")
 (ti-menu-load-string "display save-picture \"/scratch/<user>/autoansys/jobs/<full_car_job>/contour_cp.png\"")
 

@@ -96,13 +96,9 @@ profiles:
   # ── Full car: whole assembly (half-car + symmetry per maintainer) ───────
   full_car:
     description: Whole-car assembly, run half-car with a symmetry plane.
-    reference_values:
-      # F1 (maintainer-provided): FULL frontal area 1.0 m² — pairs with the
-      # half-model force doubling below. Replaces the 0.65 half-car placeholder
-      # carried over from the specialist script.
-      area_m2: 1.0
-      # Moment reference length = wheelbase, 60.5 in × 0.0254 = 1.5367 m.
-      length_m: 1.5367
+    # reference_values live below with the specialist-matched conditions:
+    # F1 FULL frontal area 1.0 m² (pairs with the half-model doubling), moment
+    # reference length = wheelbase 60.5 in = 1.5367 m, velocity 17.88 m/s.
     convergence:
       max_iterations: 750     # Kevin Full Car / specialist script
     # Half-car run with a centreline symmetry plane → double the forces (AUDIT C1).
@@ -152,24 +148,55 @@ profiles:
         z_min: 0.0
         z_max: 3.726
         margin: 0.006
-    # Forces integrate over the classifier's car zones (fc28: car + car-shell).
+    # SPECIALIST-MATCHED conditions (extracted from his solved V0.4 case,
+    # spec_settings.set, job 6412967): freestream 17.88 m/s, ground moving at
+    # freestream, wheels rotating at 88 rad/s (≡ V/r at the 204 mm wheel
+    # radius). His converged reference on this geometry: drag 311 N /
+    # downforce 832 N (full car, ×2). Wheel origins are the wrapped wheel-zone
+    # bbox centres (fc13 dump), axis +y (z-up, flow −x ⇒ positive ω rolls the
+    # contact patch with the ground).
+    reference_values:
+      area_m2: 1.0
+      length_m: 1.5367
+      velocity_mps: 17.88
+    # Forces integrate over the classifier's car zones + the separate wheels.
     reporting:
-      body_wall_pattern: "car car-shell"
+      body_wall_pattern: "car car-shell front-left-wheel rear-left-wheel"
     boundary_conditions:
       velocity_inlets:
         - zone_name: inlet
-          velocity: 15.65
+          velocity: 17.88
           turbulent_intensity_pct: 5.0
           turbulent_viscosity_ratio: 10.0
       pressure_outlets:
         - zone_name: outlet
           gauge_pressure: 0.0
-      # BASELINE: stationary ground + non-rotating wheels — the only live-
-      # validated wall forms (fc28). The car body is one merged 'car' zone plus
-      # the 'car-shell' imprint; the carved ground/rim strips default to
-      # stationary walls. Swap to moving ground / rotating wheels (translating_/
-      # rotating_walls) once the specialist's comparison conditions arrive AND
-      # the per-component wheel zones are separated.
+      # Moving ground matched to freestream (the carved ground slab zone,
+      # named by the classifier). Flow is toward −x.
+      translating_walls:
+        - zone_name: ground
+          velocity_mps: 17.88
+          direction_x: -1.0
+          direction_y: 0.0
+          direction_z: 0.0
+      # Rotating wheels (half model → left wheels only).
+      rotating_walls:
+        - zone_name: front-left-wheel
+          omega_rad_s: 88.0
+          origin_x: 1.5122
+          origin_y: 0.612
+          origin_z: 0.2039
+          axis_x: 0.0
+          axis_y: 1.0
+          axis_z: 0.0
+        - zone_name: rear-left-wheel
+          omega_rad_s: 88.0
+          origin_x: -0.0198
+          origin_y: 0.612
+          origin_z: 0.2039
+          axis_x: 0.0
+          axis_y: 1.0
+          axis_z: 0.0
       stationary_walls:
         - zone_name: car
         - zone_name: car-shell

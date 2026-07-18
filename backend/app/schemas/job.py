@@ -509,6 +509,11 @@ def apply_cfd_mode_defaults(mode: str, sc: "SolverConfig") -> "SolverConfig":
         # Override the default 2.8 m with the wheelbase reference length (F1).
         if target_length is not None and sc.reference_values.length_m == 2.8:
             sc.reference_values.length_m = target_length
+        # Specialist-matched freestream (17.88 m/s): seed only while still at
+        # the schema default so an explicit user velocity is never clobbered.
+        target_vel = profile.get("reference_values", {}).get("velocity_mps")
+        if target_vel is not None and sc.reference_values.velocity_mps == 15.65:
+            sc.reference_values.velocity_mps = target_vel
         # Bump from a component-style iteration count to the full-car value.
         if target_iters is not None and sc.convergence.max_iterations in (300, 3000):
             sc.convergence.max_iterations = target_iters

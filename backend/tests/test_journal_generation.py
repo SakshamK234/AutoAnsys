@@ -130,11 +130,13 @@ def test_slurm_rejects_invalid_start_mode():
 
 @pytest.mark.parametrize("profile", PROFILES)
 def test_reference_velocity_propagates(profile: str):
-    # The configured freestream (15.65) must reach the reference values and the
-    # inlet BC — a guard against the reference plumbing silently dropping it.
+    # The configured freestream must reach the reference values and the inlet
+    # BC — a guard against the reference plumbing silently dropping it.
+    # Component keeps the SOP 15.65; full car uses the specialist-matched 17.88.
+    expected = "17.88" if profile == "full_car" else "15.65"
     arts = render_profile_artifacts(profile)
     solver = arts["solver_from_case.jou"]
-    assert "/report/reference-values/velocity 15.65" in solver
+    assert f"/report/reference-values/velocity {expected}" in solver
     assert "velocity-inlet inlet" in solver
 
 

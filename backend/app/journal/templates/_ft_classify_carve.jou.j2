@@ -51,7 +51,19 @@
 (%py-exec "print('ASSIGNED:', names)")
 (%py-exec "assert sorted(set(names.values())) == ['car-shell', 'farfield-side', 'farfield-top', 'inlet', 'outlet', 'symmetry'], 'classifier missing tunnel faces: ' + str(sorted(set(names.values())))")
 (%py-exec "groups = {n: sorted(z for z, v in names.items() if v == n) for n in set(names.values())}")
-(%py-exec "carz = sorted(z for z in meshz if z not in names and z not in interior)")
+; Keep the wheel zones OUT of the car merge and give them their final names in
+; MESHING mode (rename_face_zone is meshing-safe and names survive the switch;
+; ids do not). Rotating-wall BCs need per-wheel zones (specialist match: his
+; case rotates the wheels at 88 rad/s). Front = larger x-centre (inlet is +x).
+(%py-exec "wheelz = [int(z) for z in meshing_utilities.get_face_zones(filter=r'wheels*')]")
+(%py-exec "print('WHEEL_ZONES:', wheelz)")
+(%py-exec "assert len(wheelz) == 2, 'expected 2 wheel zones (half model), got ' + str(wheelz)")
+(%py-exec "wbb = {z: meshing_utilities.get_bounding_box_of_zone_list(zone_id_list=[z]) for z in wheelz}")
+(%py-exec "wsort = sorted(wheelz, key=lambda z: -(wbb[z][0][0] + wbb[z][1][0]))")
+(%py-exec "meshing_utilities.rename_face_zone(zone_id=int(wsort[0]), new_name='front-left-wheel')")
+(%py-exec "meshing_utilities.rename_face_zone(zone_id=int(wsort[1]), new_name='rear-left-wheel')")
+(%py-exec "print('WHEELS_NAMED: front', wsort[0], 'rear', wsort[1])")
+(%py-exec "carz = sorted(z for z in meshz if z not in names and z not in interior and z not in wheelz)")
 (%py-exec "print('CAR_ZONES:', len(carz), carz)")
 (%py-exec "assert len(carz) >= 5, 'suspiciously few car zones: ' + str(carz)")
 ; Write the rename/merge scheme (executed after the mode switch: merge-zones /
@@ -105,6 +117,15 @@ quit
 {{ slab('outlet_slab', cd.x_min - e, cd.y_min - e, cd.z_min - e, cd.x_min + cd.rim_margin, cd.y_max + e, cd.z_max + e) }}
 {{ slab('side_slab', cd.x_min - e, cd.y_max - cd.rim_margin, cd.z_min - e, cd.x_max + e, cd.y_max + e, cd.z_max + e) }}
 (display "CARVE_DONE")(newline)
+
+; Name the carved GROUND so the moving-ground BC can target it. Each sep puts
+; its marked faces into a new zone that takes the lowest free id; for this
+; recipe the switch frees the low CAD ids and the FIRST sep (ground_slab)
+; lands on id 3 → zone 'car-shell:003' (G2 validation job 6411258 zone list:
+; carved zones car-shell:003/:005/:007/:009/:011 in sep order). Fail-fast: a
+; wrong name aborts here in seconds, not after a solve.
+/mesh/modify-zones/zone-name car-shell:003 ground
+(display "GROUND_NAMED")(newline)
 {% endif %}
 
 ; ── Pin flow-boundary zone TYPES into the mesh (like Discovery labels do

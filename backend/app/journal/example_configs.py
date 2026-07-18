@@ -285,16 +285,33 @@ _FULL_CAR_SOLVER: dict = {
         "near_wall_treatment": "auto",
         "curvature_correction": True,
     },
-    # BCs reference the FT classifier's zone names (fc28), not the CAD.
-    # BASELINE: stationary ground + non-rotating wheels (car merged into one
-    # 'car' zone + 'car-shell' imprint; carved ground/rim strips default to
-    # stationary walls). Moving ground / rotating wheels come with the
-    # specialist comparison conditions + per-component wheel separation.
+    # BCs reference the FT classifier's zone names (fc28 + wheel separation).
+    # SPECIALIST-MATCHED conditions (spec_settings.set, job 6412967): 17.88 m/s
+    # freestream, ground moving at freestream, wheels rotating at 88 rad/s
+    # about +y at the wrapped wheel-zone bbox centres. His converged reference
+    # on this geometry: drag 311 N / downforce 832 N (full car, ×2).
     "boundary_conditions": {
-        "velocity_inlets": [_inlet()],
+        "velocity_inlets": [{
+            "zone_name": "inlet", "velocity": 17.88,
+            "turbulent_intensity_pct": 5.0, "turbulent_viscosity_ratio": 10.0,
+        }],
         "pressure_outlets": [{"zone_name": "outlet", "gauge_pressure": 0.0}],
-        "translating_walls": [],
-        "rotating_walls": [],
+        "translating_walls": [{
+            "zone_name": "ground", "velocity_mps": 17.88,
+            "direction_x": -1.0, "direction_y": 0.0, "direction_z": 0.0,
+        }],
+        "rotating_walls": [
+            {
+                "zone_name": "front-left-wheel", "omega_rad_s": 88.0,
+                "origin_x": 1.5122, "origin_y": 0.612, "origin_z": 0.2039,
+                "axis_x": 0.0, "axis_y": 1.0, "axis_z": 0.0,
+            },
+            {
+                "zone_name": "rear-left-wheel", "omega_rad_s": 88.0,
+                "origin_x": -0.0198, "origin_y": 0.612, "origin_z": 0.2039,
+                "axis_x": 0.0, "axis_y": 1.0, "axis_z": 0.0,
+            },
+        ],
         "slip_walls": [
             {"zone_name": "farfield-top"},
             {"zone_name": "farfield-side"},
@@ -315,13 +332,14 @@ _FULL_CAR_SOLVER: dict = {
         "use_force_convergence": True,
     },
     "data_export": copy.deepcopy(_DATA_EXPORT),
-    # F1: FULL frontal area 1.0 m²; reference length = wheelbase (60.5 in).
+    # F1: FULL frontal area 1.0 m²; length = wheelbase; V = specialist's 17.88.
     "reference_values": {
-        "area_m2": 1.0, "length_m": 1.5367, "velocity_mps": 15.65, "density_kg_m3": 1.225,
+        "area_m2": 1.0, "length_m": 1.5367, "velocity_mps": 17.88, "density_kg_m3": 1.225,
     },
     "symmetry": copy.deepcopy(_SYMMETRY),
-    # Forces integrate over the classifier's car zones (fc28: car + car-shell).
-    "reporting": {**copy.deepcopy(_REPORTING), "body_wall_pattern": "car car-shell"},
+    # Forces integrate over the classifier's car zones + separate wheels.
+    "reporting": {**copy.deepcopy(_REPORTING),
+                  "body_wall_pattern": "car car-shell front-left-wheel rear-left-wheel"},
     "initialization": "hybrid",
 }
 
