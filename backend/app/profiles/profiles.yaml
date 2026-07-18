@@ -47,13 +47,18 @@ profiles:
       cores_per_node: 128
       memory_gb: 243
       walltime_hours: 6
-    # Fault-tolerant WRAP + geometric component classifier — the wing-validated
-    # path (probe33 → wing_probe33 → acceptance job 6388127/6388594). A raw part
-    # Parasolid has NO Discovery face labels, so the watertight path can't name
-    # the tunnel boundaries; the wrap + classifier name them by position
-    # (inlet/outlet/ground/farfield-top/symmetry/farfield-side) and merge the
-    # part faces into 'body'. carve_domain is intentionally ABSENT: a component
-    # floats in the box (no ground fusion → no slab carve).
+    # Fault-tolerant WRAP + geometric component classifier for RAW (unlabelled)
+    # part geometry. A raw part Parasolid has NO Discovery face labels, so the
+    # watertight path can't name the tunnel boundaries; the wrap + classifier
+    # name them by position (inlet/outlet/ground/farfield-top/symmetry/
+    # farfield-side) and merge the part faces into 'body'. carve_domain is
+    # ABSENT: a component floats in the box (no ground fusion → no slab carve).
+    # [needs-cluster] the classifier finds all six faces, but the zone MERGE
+    # for this 218-zone / multi-object wrap is unresolved (see
+    # _ft_classify_component.jou.j2 + docs/CLUSTER_FINDINGS.md). If the part
+    # geometry ALREADY carries Discovery face labels (inlet/outlet/ground/
+    # symmetry/walls), set mesh.workflow=watertight + classify_boundaries=false
+    # to use the labelled path instead.
     mesh:
       workflow: fault-tolerant
       classify_boundaries: true

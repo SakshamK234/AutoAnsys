@@ -248,8 +248,9 @@ def test_per_profile_mesh_workflow():
     assert "Fault-tolerant Meshing" in full
     # Both classify.
     assert "CLASSIFY_BEGIN" in comp and "CLASSIFY_BEGIN" in full
-    # Component names the box faces + merges the part into 'body', no carve.
-    assert "' body' + q" in comp or "zone-name ' + str(body[0]) + ' body'" in comp
+    # Component merges the part into 'body' via meshing-mode rename (no carve).
+    assert "groups['body'] = body" in comp
+    assert "rename_face_zone" in comp and "merge_face_zones" in comp
     # Full-car-only pieces stay out of the component path.
     for marker in (
         "/objects/delete bounding_box ()",
