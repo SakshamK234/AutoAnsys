@@ -113,5 +113,4 @@ provides it.
 
 ## License
 
-See [LICENSE](LICENSE). ANSYS and Fluent are trademarks of ANSYS, Inc., and
-using them is subject to your own license agreement.
+MIT
