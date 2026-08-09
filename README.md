@@ -113,4 +113,4 @@ provides it.
 
 ## License
 
-MIT
+MIT License
