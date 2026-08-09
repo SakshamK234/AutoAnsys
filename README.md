@@ -7,40 +7,10 @@ FSAE aero team so that running CFD does not require knowing Fluent's TUI or
 babysitting a login node.
 
 Two run profiles share one pipeline: a single component (wing, endplate,
-undertray) and a half-car full assembly.
-
-## Status
-
-The full-car path works end to end on VT ARC. A geometry goes in, a 6-million
-cell mesh comes out, the solve converges, and forces land in the UI. That part
-is real and has been run many times.
-
-Accuracy is the open problem. A CFD specialist on the team supplied a solved
-case for the same car, meshed at 41.9 million cells. Under identical boundary
-conditions our mesh over-predicts:
-
-| | Cells | Drag | Downforce |
-|---|---|---|---|
-| Specialist reference | 41.9 M | 311 N | 832 N |
-| AutoAnsys | 6.07 M | 417 N | 1461 N |
-
-Same geometry, same freestream (17.88 m/s), same moving ground and rotating
-wheels. The difference is mesh resolution. Use the current output for
-comparing design variants, not for absolute numbers.
-
-Other things worth knowing before you rely on this:
-
-- The component path fails on raw geometry that has no face labels. The mesh
-  builds, but merging the wrapped surface zones does not work yet, so the
-  boundary conditions have nothing to attach to.
-- The geometry still has to arrive with a wind tunnel enclosure already built
-  around it (SpaceClaim or Discovery). Building the enclosure automatically is
-  the main thing v2 is meant to fix.
-- Camera control for contour images does not work under Fluent's headless
-  graphics driver. Images render in the default view only.
-
-A rewrite is planned rather than more patching. [prompt.md](prompt.md) is the
-brief for it, and carries the Fluent knowledge this version was built on.
+undertray) and a half-car full assembly. A profile carries the domain and
+symmetry treatment, boundary conditions, reference values, mesh settings and
+cluster resources, so submitting a job is a matter of picking one and uploading
+geometry.
 
 ## Running it
 
@@ -97,8 +67,7 @@ state; when the job finishes, results are downloaded into object storage and
 parsed.
 
 Forces are integrated over the body wall zones only, never over every wall, and
-half-car runs are doubled in post-processing rather than in the journal. Both
-of those were bugs in an earlier version, which is why they are called out here.
+half-car runs are doubled in post-processing rather than in the journal.
 
 Meshing and solving can be split: one mesh can feed many solves, which is what
 parametric sweeps use.
@@ -130,8 +99,7 @@ diffs.
 - [Cluster findings](docs/CLUSTER_FINDINGS.md), every Fluent 2025R1 quirk we hit
   and the job ID that proved it. Read this one before touching the journal
   templates.
-- [Validation](docs/VALIDATION.md) for what has and has not been verified on
-  real hardware
+- [Validation](docs/VALIDATION.md)
 
 ## Configuration and secrets
 
