@@ -42,3 +42,7 @@ geometries/
 
 # Local copies of cluster run results (large binaries; not versioned)
 results/
+
+# Build brief for the v2 rewrite: contains cluster hostnames, NetID and
+# license-server details. Kept local, never published.
+prompt.md

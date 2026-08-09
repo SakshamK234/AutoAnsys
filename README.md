@@ -1,63 +1,149 @@
 # AutoAnsys
 
-Web app for configuring **ANSYS Fluent** CFD workflows, submitting jobs to an **HPC cluster** (SLURM + SSH), and tracking results.
+Upload a CAD file, get aerodynamic results. AutoAnsys generates ANSYS Fluent
+journals, submits them to a SLURM cluster over SSH, and pulls back forces,
+coefficients, residuals and contour images. It was built for the Virginia Tech
+FSAE aero team so that running CFD does not require knowing Fluent's TUI or
+babysitting a login node.
 
-## Quick start
+Two run profiles share one pipeline: a single component (wing, endplate,
+undertray) and a half-car full assembly.
+
+## Status
+
+The full-car path works end to end on VT ARC. A geometry goes in, a 6-million
+cell mesh comes out, the solve converges, and forces land in the UI. That part
+is real and has been run many times.
+
+Accuracy is the open problem. A CFD specialist on the team supplied a solved
+case for the same car, meshed at 41.9 million cells. Under identical boundary
+conditions our mesh over-predicts:
+
+| | Cells | Drag | Downforce |
+|---|---|---|---|
+| Specialist reference | 41.9 M | 311 N | 832 N |
+| AutoAnsys | 6.07 M | 417 N | 1461 N |
+
+Same geometry, same freestream (17.88 m/s), same moving ground and rotating
+wheels. The difference is mesh resolution. Use the current output for
+comparing design variants, not for absolute numbers.
+
+Other things worth knowing before you rely on this:
+
+- The component path fails on raw geometry that has no face labels. The mesh
+  builds, but merging the wrapped surface zones does not work yet, so the
+  boundary conditions have nothing to attach to.
+- The geometry still has to arrive with a wind tunnel enclosure already built
+  around it (SpaceClaim or Discovery). Building the enclosure automatically is
+  the main thing v2 is meant to fix.
+- Camera control for contour images does not work under Fluent's headless
+  graphics driver. Images render in the default view only.
+
+A rewrite is planned rather than more patching. [prompt.md](prompt.md) is the
+brief for it, and carries the Fluent knowledge this version was built on.
+
+## Running it
 
 ```bash
 cp .env.example .env
 docker compose up --build
 ```
 
-- **Frontend:** http://localhost:3000  
-- **API:** http://localhost:8000  
-- **Docs:** [docs/](docs/) (start with [Getting Started](docs/GETTING_STARTED.md))
+The UI is at http://localhost:3000 and the API at http://localhost:8000.
 
-By default, **`CLUSTER_MOCK_MODE=true`** so the stack runs without a real cluster (mock jobs complete for UI development). To submit to your site’s HPC, set `CLUSTER_MOCK_MODE=false` and configure cluster variables in `.env` (see below).
+`CLUSTER_MOCK_MODE=true` by default, which fakes the cluster so you can work on
+the UI without an account or a VPN. Mock jobs complete on a timer and return
+placeholder results.
 
-## Running a CFD job
-
-A job is driven by one **run profile** (`cfd_mode`), which selects domain/symmetry,
-ground/wheel BCs, mesh strategy, reference values, and SLURM sizing — one pipeline,
-two scopes:
-
-- **Component** (`individual_part`) — a single part/sub-assembly. Watertight mesh,
-  1 node / 6 h, symmetry plane + ×2 force factor.
-- **Full car** (`full_car`) — the whole assembly, run half-car. Fault-tolerant
-  (surface-wrapped) mesh, 2 nodes / 24 h, moving ground + rotating wheels +
-  symmetry + ×2.
-
-End to end: upload a geometry (Parasolid recommended) → **New Job** wizard → pick the
-profile, adjust mesh/solver/resources → **Submit**. AutoAnsys renders the Fluent
-journal + SLURM script, runs it in scratch, and returns forces (N), coefficients
-(Cd/Cl/Cm), residuals, and contour images. The split workflow lets one **mesh** feed
-many **solves** (sweeps reuse the mesh).
-
-**Preview without a cluster** — render every artifact for both profiles offline:
+To render every journal and SLURM script for both profiles without Docker or a
+cluster:
 
 ```bash
 cd backend && python -m app.journal.validate --out ./_dryrun
 ```
 
-### Docs ([full index](docs/README.md))
-- [Architecture](docs/ARCHITECTURE.md) — stage diagram, module map, run-profile design
-- [Config reference](docs/CONFIG_REFERENCE.md) — every config parameter + both profiles
-- [Runbook](docs/RUNBOOK.md) — submit / monitor / retrieve + troubleshooting
-- [Validation](docs/VALIDATION.md) — what must be validated on the real cluster
-- [Audit](docs/AUDIT.md) · [Plan](docs/PLAN.md) · [Changes](docs/CHANGES.md) — the audit, plan, and change summary
+That is the fastest way to see what actually gets sent to Fluent.
 
-## Configuration (public / production)
+## Connecting to a real cluster
 
-- **Never commit** a real `.env` or SSH private keys. The repository uses **placeholders** such as `your_netid`, `your_slurm_account`, and `cluster-login.example.edu`.
-- **Rotate** `JWT_SECRET`, database passwords, and S3 keys for any deployment that is reachable beyond your laptop.
-- **Docker Compose** ships with **development-only** secrets (`minioadmin`, `dev-secret-change-in-production`, etc.). Do not use those values in production.
-- **ANSYS Fluent** is not redistributed here; you need a valid license and module layout on your cluster.
+You need an account on a SLURM cluster with Fluent installed, and network
+access to it (VPN if you are off campus).
 
-### Connecting Docker services to a real cluster
+1. In `.env`, set `CLUSTER_MOCK_MODE=false` and fill in `CLUSTER_HOST`,
+   `CLUSTER_USER`, `CLUSTER_ACCOUNT`, `CLUSTER_WORKSPACE_BASE` and
+   `FLUENT_MODULE`. `CLUSTER_KEY_PATH` is the path to the key *inside* the
+   container.
+2. Set `CLUSTER_SSH_KEY_HOST_PATH` to the key's path on your machine, and
+   uncomment the SSH key volume mounts for `backend` and `celery-worker` in
+   `docker-compose.yml`.
+3. Restart the backend and worker containers, then check the connection:
 
-1. Set in `.env`: `CLUSTER_MOCK_MODE=false`, `CLUSTER_HOST`, `CLUSTER_USER`, `CLUSTER_WORKSPACE_BASE`, `CLUSTER_ACCOUNT`, `FLUENT_MODULE`, and `CLUSTER_KEY_PATH` (path **inside** the container).
-2. Uncomment the SSH key volume lines in `docker-compose.yml` for **backend** and **celery-worker**, and set `CLUSTER_SSH_KEY_HOST_PATH` in `.env` to your **host** path to the private key (see `.env.example`).
+```bash
+docker compose exec backend python -c "
+from app.cluster.ssh_manager import SSHManager
+s = SSHManager(); s.connect()
+print(s.execute_command('hostname')[0])"
+```
+
+Key authentication has to work without a passphrase prompt. Test `ssh` from the
+host first.
+
+## How a job runs
+
+Pick a profile, upload a geometry, and submit. The backend renders a Fluent
+journal and a SLURM batch script, uploads both to scratch along with the
+geometry, and runs `sbatch`. A Celery beat task polls `sacct` and updates job
+state; when the job finishes, results are downloaded into object storage and
+parsed.
+
+Forces are integrated over the body wall zones only, never over every wall, and
+half-car runs are doubled in post-processing rather than in the journal. Both
+of those were bugs in an earlier version, which is why they are called out here.
+
+Meshing and solving can be split: one mesh can feed many solves, which is what
+parametric sweeps use.
+
+## Repository layout
+
+```
+backend/
+  app/journal/templates/   Jinja templates for Fluent journals and SLURM scripts
+  app/profiles/            run profiles (the single source of truth for defaults)
+  app/cluster/             SSH, SFTP and SLURM managers
+  app/post/                force and residual parsing, coefficient maths
+  app/tasks/               Celery submit, poll and download tasks
+  tests/                   81 tests, no Fluent or cluster required
+frontend/                  React UI
+docs/                      architecture, config reference, runbook, findings
+```
+
+Run the tests with `cd backend && python -m pytest`. They render journals and
+check the output against golden files, so template changes show up as readable
+diffs.
+
+## Documentation
+
+- [Getting started](docs/GETTING_STARTED.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Config reference](docs/CONFIG_REFERENCE.md)
+- [Runbook](docs/RUNBOOK.md) for submitting, monitoring and troubleshooting
+- [Cluster findings](docs/CLUSTER_FINDINGS.md), every Fluent 2025R1 quirk we hit
+  and the job ID that proved it. Read this one before touching the journal
+  templates.
+- [Validation](docs/VALIDATION.md) for what has and has not been verified on
+  real hardware
+
+## Configuration and secrets
+
+The committed `.env.example` and `docker-compose.yml` use placeholder
+credentials (`your_netid`, `minioadmin`, `dev-secret-change-in-production`).
+Replace all of them before exposing this anywhere beyond localhost, and do not
+commit a real `.env` or a private key.
+
+Fluent is not included. You need your own license and a cluster module that
+provides it.
 
 ## License
 
-Application code in this repository is provided under the terms of the [LICENSE](./LICENSE) file if present; otherwise clarify with the repository owner. **ANSYS** and **Fluent** are trademarks of ANSYS, Inc.; use of those products is subject to your license agreement with ANSYS.
+See [LICENSE](LICENSE). ANSYS and Fluent are trademarks of ANSYS, Inc., and
+using them is subject to your own license agreement.
