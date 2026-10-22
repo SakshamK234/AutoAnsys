@@ -109,6 +109,19 @@
 (%py-exec "workflow.TaskObject['Add Local Sizing'].AddChildAndUpdate(DeferUpdate=False)")
 (%py-exec "workflow.TaskObject['Add Local Sizing'].Arguments.set_state({r'LocalSettingsName': r'car-proximity', r'SelectionType': r'object', r'ObjectSelectionList': carobjs, r'LocalSizeControlParameters': {r'SizingType': r'proximity', r'MinSize': {{ ss.min_size }}, r'MaxSize': {{ ss.max_size }}, r'GrowthRate': {{ ss.growth_rate }}, r'CellsPerGap': {{ ss.cells_per_gap }}, r'ScopeProximityTo': r'faces'}})")
 (%py-exec "workflow.TaskObject['Add Local Sizing'].AddChildAndUpdate(DeferUpdate=False)")
+{% if ss.fine_object_prefixes and ss.fine_min_size is not none %}
+; ── FINE scoped control on named aero objects (specialist-parity TE
+;    resolution) — ON TOP of the car controls, same AddChildAndUpdate
+;    discipline (never 'Custom'). Objects picked by name prefix at runtime
+;    so instance numbering (.1/.2/…) never needs enumerating.
+(%py-exec "fineobjs = [str(o) for o in objs if any(str(o).startswith(p) for p in {{ ss.fine_object_prefixes | tojson }})]")
+(%py-exec "print('FINE_OBJECTS:', fineobjs)")
+(%py-exec "assert fineobjs, 'fine_object_prefixes matched no CAD objects'")
+(%py-exec "workflow.TaskObject['Add Local Sizing'].Arguments.set_state({r'LocalSettingsName': r'fine-curvature', r'SelectionType': r'object', r'ObjectSelectionList': fineobjs, r'LocalSizeControlParameters': {r'SizingType': r'curvature', r'MinSize': {{ ss.fine_min_size }}, r'MaxSize': {{ ss.fine_max_size if ss.fine_max_size is not none else ss.max_size }}, r'GrowthRate': {{ ss.growth_rate }}, r'CurvatureNormalAngle': {{ ss.fine_curvature_normal_angle if ss.fine_curvature_normal_angle is not none else ss.curvature_normal_angle }}, r'ScopeProximityTo': r'faces-and-edges'}})")
+(%py-exec "workflow.TaskObject['Add Local Sizing'].AddChildAndUpdate(DeferUpdate=False)")
+(%py-exec "workflow.TaskObject['Add Local Sizing'].Arguments.set_state({r'LocalSettingsName': r'fine-proximity', r'SelectionType': r'object', r'ObjectSelectionList': fineobjs, r'LocalSizeControlParameters': {r'SizingType': r'proximity', r'MinSize': {{ ss.fine_min_size }}, r'MaxSize': {{ ss.fine_max_size if ss.fine_max_size is not none else ss.max_size }}, r'GrowthRate': {{ ss.growth_rate }}, r'CellsPerGap': {{ ss.cells_per_gap }}, r'ScopeProximityTo': r'faces'}})")
+(%py-exec "workflow.TaskObject['Add Local Sizing'].AddChildAndUpdate(DeferUpdate=False)")
+{% endif %}
 (display "SCOPED_SIZING_DONE")(newline)
 {% endif %}
 (%py-exec "workflow.TaskObject['Choose Mesh Control Options'].Execute()")

@@ -122,6 +122,10 @@ _MESH_OVERRIDES: dict = {
         "scoped_sizing": {
             "min_size": 2.0, "max_size": 16.0, "growth_rate": 1.2,
             "curvature_normal_angle": 18.0, "cells_per_gap": 3,
+        "fine_object_prefixes": [],
+        "fine_min_size": None,
+        "fine_max_size": None,
+        "fine_curvature_normal_angle": None,
         },
     },
     "full_car": {
@@ -133,6 +137,10 @@ _MESH_OVERRIDES: dict = {
         "scoped_sizing": {
             "min_size": 2.0, "max_size": 16.0, "growth_rate": 1.2,
             "curvature_normal_angle": 18.0, "cells_per_gap": 3,
+        "fine_object_prefixes": [],
+        "fine_min_size": None,
+        "fine_max_size": None,
+        "fine_curvature_normal_angle": None,
         },
         "classify_boundaries": True,
         "carve_domain": {

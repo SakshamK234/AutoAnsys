@@ -206,6 +206,19 @@ class ScopedSizing(BaseModel):
     growth_rate: float = 1.2
     curvature_normal_angle: float = 18.0
     cells_per_gap: int = 3
+    # Optional FINE control layered on top, scoped to CAD objects whose names
+    # start with any of these prefixes (e.g. ["rear_wing", "undertray"]) —
+    # specialist-parity trailing-edge resolution without meshing the whole
+    # car at that size. None/empty → no fine control (default behaviour).
+    fine_object_prefixes: list[str] = Field(default_factory=list)
+    fine_min_size: float | None = None
+    fine_max_size: float | None = None
+    fine_curvature_normal_angle: float | None = None
+
+    @field_validator("fine_object_prefixes")
+    @classmethod
+    def _v_fine_prefixes(cls, v: list[str]) -> list[str]:
+        return vld.zone_name_list(v, field="fine sizing object prefix")
 
 
 class CarveDomain(BaseModel):
