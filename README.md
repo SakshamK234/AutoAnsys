@@ -15,9 +15,13 @@ geometry.
 ## Running it
 
 ```bash
-cp .env.example .env
-docker compose up --build
+make up   # builds + starts everything → http://localhost:3000
 ```
+
+First run only: `make up` creates `.env` from `.env.example` if missing — edit it
+to point at your cluster (never copy over an existing `.env`; it holds your
+settings). `make down` stops the stack; `make logs`, `make test`, `make dryrun`
+are also available.
 
 The UI is at http://localhost:3000 and the API at http://localhost:8000.
 
@@ -110,6 +114,21 @@ commit a real `.env` or a private key.
 
 Fluent is not included. You need your own license and a cluster module that
 provides it.
+
+### Production checklist (v2 hardening)
+
+Set in `.env` before exposing the app beyond your laptop (the backend refuses
+to boot in `ENVIRONMENT=production` with placeholder secrets):
+
+- `ENVIRONMENT=production`, `JWT_SECRET=$(openssl rand -hex 32)`
+- `CORS_ORIGINS=http://<host>:3000`, `S3_PUBLIC_ENDPOINT=http://<host>:9000`,
+  `MINIO_BIND=0.0.0.0` (LAN presigned downloads), non-default MinIO credentials
+- `INVITE_CODE=<team code>` — closes registration and disables guest login
+- `MAX_ACTIVE_JOBS_PER_USER` / `MAX_UPLOAD_MB` to taste
+
+The SLURM account is pinned server-side from `CLUSTER_ACCOUNT`; guests are
+read-only; every config string that reaches a journal or SBATCH line is
+validated at the API boundary. See [docs/CHANGES_V2.md](docs/CHANGES_V2.md).
 
 ## License
 

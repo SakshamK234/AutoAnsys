@@ -81,9 +81,12 @@ largely single-threaded). Override any value in the wizard's Resources step.
 ### Meshing fails on a dirty full-car STEP
 - Watertight meshing rejects gaps / non-watertight bodies. Use the **full_car**
   profile, which selects the **fault-tolerant (surface-wrapped)** workflow.
-- That FT journal is currently an **unvalidated skeleton** (see VALIDATION.md):
-  run it interactively first, fix the capping zone names and the fluid material
-  point, then submit through the pipeline.
+- The FT journal is **cluster-validated** (docs/CLUSTER_FINDINGS.md): the full-car
+  chain ran end-to-end on ARC (fc28 + G2 codification, 6.07 M cells), and the
+  component classifier v5 fix is covered by the acceptance run. If a new CAD
+  export misbehaves, read the probe findings in CLUSTER_FINDINGS.md before
+  editing the templates — most "fixes" from Fluent docs regress live-validated
+  idioms.
 
 ### Multi-node job runs slow / uses one node
 - Confirm `fluent.log` lists hosts on **all** allocated nodes. If everything is on

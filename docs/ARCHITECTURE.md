@@ -51,7 +51,7 @@ functions, everything that differs between a component and a full car:
 |---|---|---|
 | Boundary conditions | inlet, outlet, moving ground, walls, symmetry | inlet, moving ground, rotating wheels, slip walls, symmetry |
 | Symmetry / force factor | half-domain, ×2 | half-car, ×2 |
-| Reference area | per-part (1.2 default) | full frontal (0.65 placeholder — F1) |
+| Reference area | per-part (1.2 default) | full frontal 1.0 m² (maintainer F1) |
 | Iterations | 300 | 750 |
 | Mesh workflow | Watertight | Fault-tolerant (wrap) |
 | SLURM | 1 node / 6 h | 2 nodes / 24 h |
