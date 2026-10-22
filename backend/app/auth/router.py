@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
 from app.auth.jwt import create_access_token, create_refresh_token, verify_token
+from app.config import settings
 from app.database import get_db
 from app.models.user import User, UserRole
 from app.schemas.auth import (
@@ -27,7 +28,16 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)) -> User:
-    """Create a new user account."""
+    """Create a new user account.
+
+    When the deployment sets ``INVITE_CODE``, registration is closed to people
+    who have the team's invite link/code (GUI_PLAN G4.3).
+    """
+    if settings.INVITE_CODE and body.invite_code != settings.INVITE_CODE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Registration requires a valid invite code — ask your aero lead",
+        )
     existing = await db.execute(select(User).where(User.email == body.email))
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(
@@ -68,7 +78,16 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)) -> dict:
 
 @router.post("/guest", response_model=TokenResponse)
 async def guest_login(db: AsyncSession = Depends(get_db)) -> dict:
-    """Create a temporary guest account and return JWT tokens."""
+    """Create a temporary read-only guest account and return JWT tokens.
+
+    Guests cannot upload, submit, or otherwise spend cluster allocation
+    (enforced by ``require_member``). Disabled entirely on closed deployments.
+    """
+    if settings.INVITE_CODE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Guest access is disabled on this deployment",
+        )
     guest_id = _uuid.uuid4()
     guest_email = f"guest-{guest_id.hex[:12]}@autoansys.local"
 

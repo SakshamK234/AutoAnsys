@@ -2,11 +2,11 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, File, status
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_member
 from app.database import get_db
 from app.models.geometry import Geometry
 from app.models.user import User
@@ -19,10 +19,10 @@ router = APIRouter(prefix="/api/geometries", tags=["geometries"])
 @router.post("", response_model=GeometryResponse, status_code=status.HTTP_201_CREATED)
 async def upload_geometry(
     file: UploadFile = File(...),
-    component_name: str | None = None,
-    description: str | None = None,
+    component_name: str | None = Form(None),
+    description: str | None = Form(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_member),
 ) -> Geometry:
     """Upload a new geometry file."""
     service = GeometryService(db)
@@ -38,10 +38,10 @@ async def upload_geometry(
 @router.post("/upload", response_model=GeometryResponse, status_code=status.HTTP_201_CREATED)
 async def upload_geometry_alias(
     file: UploadFile = File(...),
-    component_name: str | None = None,
-    description: str | None = None,
+    component_name: str | None = Form(None),
+    description: str | None = Form(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_member),
 ) -> Geometry:
     """Upload a new geometry file (alias for POST /)."""
     return await upload_geometry(file, component_name, description, db, current_user)
@@ -110,7 +110,7 @@ async def download_geometry(
 async def delete_geometry(
     geometry_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_member),
 ) -> None:
     """Delete a geometry and its S3 object."""
     result = await db.execute(

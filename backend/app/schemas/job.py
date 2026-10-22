@@ -3,9 +3,10 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.profiles import UnknownProfileError, resolve_profile
+from app.utils import validation as vld
 
 
 # ── Mesh Configuration ────────────────────────────────────────────────────
@@ -38,6 +39,21 @@ class LocalSizingRegion(BaseModel):
     cells_per_gap: int | None = None
     curvature_normal_angle: float | None = None
 
+    @field_validator("name")
+    @classmethod
+    def _v_name(cls, v: str) -> str:
+        return vld.zone_name(v, field="sizing region name")
+
+    @field_validator("type")
+    @classmethod
+    def _v_type(cls, v: str) -> str:
+        return vld.one_of(v, ("body_of_influence", "face_sizing"), field="sizing type")
+
+    @field_validator("face_zones")
+    @classmethod
+    def _v_face_zones(cls, v: list[str]) -> list[str]:
+        return vld.zone_pattern_list(v, field="face zone")
+
 
 class RefinementRegionBox(BaseModel):
     """A 'Create Local Refinement Regions' box (Watertight workflow task).
@@ -69,6 +85,16 @@ class RefinementRegionBox(BaseModel):
     y_max: float | None = None
     z_min: float | None = None
     z_max: float | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _v_name(cls, v: str) -> str:
+        return vld.zone_name(v, field="refinement region name")
+
+    @field_validator("labels")
+    @classmethod
+    def _v_labels(cls, v: list[str]) -> list[str]:
+        return vld.zone_pattern_list(v, field="refinement label")
 
 
 class SurfaceMeshConfig(BaseModel):
@@ -105,6 +131,23 @@ class VolumeMeshConfig(BaseModel):
     # hex_max_cell_length (geometry units) → VolumeFillControls.HexMaxCellLength.
     fill: str = "default"
     hex_max_cell_length: float | None = None
+
+    @field_validator("prism_labels")
+    @classmethod
+    def _v_prism_labels(cls, v: list[str]) -> list[str]:
+        return vld.zone_pattern_list(v, field="prism label")
+
+    @field_validator("fill")
+    @classmethod
+    def _v_fill(cls, v: str) -> str:
+        return vld.one_of(v, ("default", "poly-hexcore"), field="volume fill")
+
+    @field_validator("num_layers")
+    @classmethod
+    def _v_num_layers(cls, v: int) -> int:
+        if not 0 <= v <= 60:
+            raise ValueError("num_layers must be between 0 and 60")
+        return v
 
 
 class WindTunnelConfig(BaseModel):
@@ -258,6 +301,31 @@ class MeshConfig(BaseModel):
     # Import task defaults, matching the specialist full-car journal.
     pin_cad_import_options: bool = True
 
+    @field_validator("delete_bodies")
+    @classmethod
+    def _v_delete_bodies(cls, v: list[str]) -> list[str]:
+        return vld.zone_name_list(v, field="delete-body name")
+
+    @field_validator("original_zones")
+    @classmethod
+    def _v_original_zones(cls, v: list[str] | None) -> list[str] | None:
+        return None if v is None else vld.zone_name_list(v, field="original zone")
+
+    @field_validator("geometry_unit")
+    @classmethod
+    def _v_geometry_unit(cls, v: str) -> str:
+        return vld.one_of(v, ("mm", "cm", "m", "in"), field="geometry unit")
+
+    @field_validator("workflow")
+    @classmethod
+    def _v_workflow(cls, v: str) -> str:
+        return vld.one_of(v, ("watertight", "fault-tolerant"), field="mesh workflow")
+
+    @field_validator("describe_setup_type")
+    @classmethod
+    def _v_describe(cls, v: str) -> str:
+        return vld.one_of(v, ("default", "fluid-only"), field="describe setup type")
+
 
 # ── Solver Configuration ─────────────────────────────────────────────────
 
@@ -276,6 +344,13 @@ class TurbulenceConfig(BaseModel):
 
 
 # ── Boundary-condition primitives ────────────────────────────────────
+# ZoneNameStr rejects anything that could escape a journal TUI line or a
+# %py-exec string (quotes, whitespace, newlines) at the schema boundary.
+from typing import Annotated  # noqa: E402
+
+from pydantic import AfterValidator  # noqa: E402
+
+ZoneNameStr = Annotated[str, AfterValidator(lambda v: vld.zone_name(v))]
 # Each BC is a single zone assignment; `BoundaryConditions` holds a list per
 # kind. This generalises across CFD modes — a wing test uses inlet+outlet+
 # walls+symmetry, a full-car run uses inlet+rotating-wheels+slip-walls+ground,
@@ -288,20 +363,20 @@ class VelocityInletBC(BaseModel):
     `turbulent_intensity_pct` is in percent (Fluent TUI takes the raw "5"
     not "0.05") to mirror the working CFD-specialist script.
     """
-    zone_name: str = "inlet"
+    zone_name: ZoneNameStr = "inlet"
     velocity: float = 15.65
     turbulent_intensity_pct: float = 5.0
     turbulent_viscosity_ratio: float = 10.0
 
 
 class PressureOutletBC(BaseModel):
-    zone_name: str = "outlet"
+    zone_name: ZoneNameStr = "outlet"
     gauge_pressure: float = 0.0
 
 
 class TranslatingWallBC(BaseModel):
     """No-slip wall translating at a constant velocity (e.g. moving ground)."""
-    zone_name: str
+    zone_name: ZoneNameStr
     velocity_mps: float = 15.65
     # SOP ground motion direction: -x.
     direction_x: float = -1.0
@@ -315,7 +390,7 @@ class RotatingWallBC(BaseModel):
     Each wheel carries its own pivot origin so the front- and rear-tire
     rotations are placed correctly. Kevin reference: 77 rad/s about +y.
     """
-    zone_name: str
+    zone_name: ZoneNameStr
     omega_rad_s: float = 77.0
     origin_x: float = 0.0
     origin_y: float = 0.0
@@ -332,7 +407,7 @@ class SlipWallBC(BaseModel):
     where the wall is geometrically present but should not impart shear on
     the flow.
     """
-    zone_name: str
+    zone_name: ZoneNameStr
 
 
 class StationaryWallBC(BaseModel):
@@ -342,11 +417,11 @@ class StationaryWallBC(BaseModel):
     do not normally need to enumerate the car body here because Fluent
     types unlabelled face zones as walls automatically.
     """
-    zone_name: str
+    zone_name: ZoneNameStr
 
 
 class SymmetryPlaneBC(BaseModel):
-    zone_name: str
+    zone_name: ZoneNameStr
 
 
 class BoundaryConditions(BaseModel):
@@ -442,6 +517,15 @@ class ReportingConfig(BaseModel):
     moment_center_y: float = 0.0
     moment_center_z: float = 0.0
 
+    @field_validator("body_wall_pattern")
+    @classmethod
+    def _v_pattern(cls, v: str) -> str:
+        # Space-separated multi-zone lists are allowed (fc28: "car car-shell").
+        parts = str(v).split()
+        if not parts:
+            raise ValueError("body_wall_pattern must not be empty")
+        return " ".join(vld.zone_pattern(p, field="body wall pattern") for p in parts)
+
 
 class DataExportConfig(BaseModel):
     forces_csv: bool = True
@@ -463,6 +547,11 @@ class SolverConfig(BaseModel):
     # "hybrid" → /solve/init/hyb-init (one-step; matches specialist script)
     # "hybrid-absolute" → set absolute reference frame, then hyb-initialize
     initialization: str = "hybrid"
+
+    @field_validator("initialization")
+    @classmethod
+    def _v_init(cls, v: str) -> str:
+        return vld.one_of(v, ("hybrid", "hybrid-absolute", "standard"), field="initialization")
 
 
 # ── Per-mode SOP defaults ────────────────────────────────────────────────
@@ -595,10 +684,17 @@ def check_solver_correctness(sc: "SolverConfig", cfd_mode: str) -> list[str]:
 
 
 class SlurmConfig(BaseModel):
-    nodes: int = 1
-    cores_per_node: int = 128
-    memory_gb: int = 243
-    walltime_hours: int = 24
+    """SLURM resources. Every string here lands on an ``#SBATCH`` line of a
+    script executed as the shared service account, so each one is validated:
+    identifiers by character class, enums by allowlist, numbers by range.
+    The ``account`` is advisory — the submit tasks pin the server-configured
+    ``CLUSTER_ACCOUNT`` so users cannot bill other allocations (GUI_PLAN G2.4).
+    """
+
+    nodes: int = Field(default=1, ge=1, le=4)
+    cores_per_node: int = Field(default=128, ge=1, le=128)
+    memory_gb: int = Field(default=243, ge=1, le=512)
+    walltime_hours: int = Field(default=24, ge=1, le=96)
     partition: str = "normal_q"
     account: str = "your_slurm_account"
     job_name: str = "autoansys_cfd"
@@ -607,6 +703,28 @@ class SlurmConfig(BaseModel):
     # ethernet -> -peth, none -> (omitted).
     mpi: str = "intel"
     interconnect: str = "infiniband"
+
+    @field_validator("partition")
+    @classmethod
+    def _v_partition(cls, v: str) -> str:
+        return vld.one_of(
+            v, ("normal_q", "preemptable_q"), field="partition"
+        )
+
+    @field_validator("account", "job_name")
+    @classmethod
+    def _v_ident(cls, v: str) -> str:
+        return vld.slurm_identifier(v)
+
+    @field_validator("mpi")
+    @classmethod
+    def _v_mpi(cls, v: str) -> str:
+        return vld.one_of(v, ("intel", "openmpi", "default"), field="mpi")
+
+    @field_validator("interconnect")
+    @classmethod
+    def _v_interconnect(cls, v: str) -> str:
+        return vld.one_of(v, ("infiniband", "ethernet", "none"), field="interconnect")
 
 
 def apply_cfd_mode_slurm_defaults(mode: str, sc: "SlurmConfig") -> "SlurmConfig":
@@ -689,6 +807,11 @@ class JobCreate(BaseModel):
     solver_config: SolverConfig = Field(default_factory=SolverConfig)
     slurm_config: SlurmConfig = Field(default_factory=SlurmConfig)
 
+    @field_validator("cfd_mode")
+    @classmethod
+    def _v_cfd_mode(cls, v: str) -> str:
+        return vld.one_of(v, ("individual_part", "full_car"), field="cfd_mode")
+
 
 class JobResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -710,6 +833,9 @@ class JobResponse(BaseModel):
     mesh_id: uuid.UUID | None = None
     # Compact mesh info (name, status, cell_count) — populated by the API layer.
     mesh: dict | None = None
+    # Failure reason + live stage progress (GUI_PLAN G1.5/G1.6).
+    error_message: str | None = None
+    progress: dict | None = None
     created_at: datetime
 
 
@@ -719,6 +845,8 @@ class JobStatusResponse(BaseModel):
     slurm_job_id: str | None
     started_at: datetime | None
     completed_at: datetime | None
+    error_message: str | None = None
+    progress: dict | None = None
 
 
 class JobListResponse(BaseModel):
@@ -766,8 +894,18 @@ class ResultFileResponse(BaseModel):
 
 class SweepParameter(BaseModel):
     """Defines a single parameter to sweep over."""
-    path: list[str]  # e.g. ["solver", "boundary_conditions", "inlet", "velocity"]
+    path: list[str]  # e.g. ["solver", "boundary_conditions", "velocity_inlets", "0", "velocity"]
     values: list[float | int | str]  # e.g. [15, 20, 25, 30]
+
+    @field_validator("path")
+    @classmethod
+    def _v_path(cls, v: list[str]) -> list[str]:
+        if not v:
+            raise ValueError("sweep path must not be empty")
+        for key in v:
+            if not key.replace("_", "").isalnum():
+                raise ValueError(f"invalid sweep path key {key!r}")
+        return v
 
 
 class SweepCreate(BaseModel):
@@ -781,6 +919,11 @@ class SweepCreate(BaseModel):
     slurm_config: SlurmConfig = Field(default_factory=SlurmConfig)
     sweep_param: SweepParameter
     auto_submit: bool = False  # If true, submit all jobs after creation
+
+    @field_validator("cfd_mode")
+    @classmethod
+    def _v_cfd_mode(cls, v: str) -> str:
+        return vld.one_of(v, ("individual_part", "full_car"), field="cfd_mode")
 
 
 class SweepResponse(BaseModel):

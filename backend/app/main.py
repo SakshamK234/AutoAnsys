@@ -1,11 +1,13 @@
 """FastAPI application entry point."""
 
+import logging
 from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.config import settings
 from app.auth.router import router as auth_router
 from app.api.geometries import router as geometries_router
 from app.api.jobs import router as jobs_router
@@ -18,12 +20,21 @@ from app.api.profiles import router as profiles_router
 from app.api.websocket import router as ws_router
 
 
+logger = logging.getLogger(__name__)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application startup / shutdown lifecycle."""
-    # TODO: initialise connection pools, warm caches, etc.
+    problems = settings.validate_production()
+    if settings.ENVIRONMENT == "production" and problems:
+        raise RuntimeError(
+            "Refusing to start with production misconfiguration:\n- "
+            + "\n- ".join(problems)
+        )
+    for p in problems:
+        logger.warning("insecure default (ok for dev, fatal in production): %s", p)
     yield
-    # TODO: close connection pools, flush buffers, etc.
 
 
 app = FastAPI(
@@ -33,11 +44,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ── CORS (permissive for development) ─────────────────────────────────────
+# ── CORS — origins come from CORS_ORIGINS (comma-separated). A wildcard is
+# allowed only without credentials, matching browser CORS semantics.
+_origins = settings.cors_origin_list
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_origins,
+    allow_credentials="*" not in _origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -11,7 +11,10 @@
 # RIGHT:                    --ntasks-per-node=N --cpus-per-task=1
 #SBATCH --ntasks-per-node=128
 #SBATCH --cpus-per-task=1
-#SBATCH --exclusive
+# NO --exclusive: it demands a fully idle node, and on a busy TinkerCliffs
+# that can mean days of queueing while mixed nodes hold thousands of idle
+# cores (observed 2026-10-22: 2 top-priority jobs pending 24 h behind it).
+# The --mem/--ntasks requests already reserve everything the run needs.
 #SBATCH --mem=243G
 #SBATCH --time=06:00:00
 #SBATCH --output=/scratch/<user>/autoansys/jobs/<individual_part_job>/slurm-%j.out
@@ -100,6 +103,7 @@ if [ $FLUENT_EXIT -ne 0 ]; then
     tail -50 fluent.log
     exit $FLUENT_EXIT
 fi
+
 
 echo ""
 echo "=== AutoAnsys Job Complete: $(date) ==="

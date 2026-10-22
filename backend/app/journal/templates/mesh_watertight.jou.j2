@@ -69,10 +69,12 @@ yes
 /file/write-case-data "{{ workspace }}/result.cas.h5"
 {% endif %}
 
-; ══════════════════════════════════════════════════════════════════════
-; PHASE 4: POST-PROCESSING — Contour Images (shared partial)
-; ══════════════════════════════════════════════════════════════════════
-{% include '_contours_block.jou.j2' %}
+; NOTE: no contour block here. Combined sessions launch `-meshing -g`, which
+; has no graphics subsystem — `display save-picture` does not exist (fc28,
+; probes 6388030/6388066). Contours are rendered by the follow-up
+; `-gu -driver null` pass in the same SLURM allocation (contours_only.jou,
+; see slurm_job.sh.j2 contours_pass).
+(display "COMBINED_SOLVE_COMPLETE")(newline)
 
 ; ── Done ──────────────────────────────────────────────────────────────
 /exit yes

@@ -127,12 +127,34 @@ class JournalGenerator:
             cfd_mode=cfd_mode,
         )
 
+    def generate_contours_journal(
+        self,
+        solver_config: dict,
+        case_file: str,
+        workspace: str,
+        cfd_mode: str = "individual_part",
+    ) -> str:
+        """Generate the contour-render pass journal (contours_only.jou).
+
+        Used after combined `-meshing -g` sessions, which have no graphics
+        subsystem: a second `-gu -driver null` Fluent session in the same
+        SLURM allocation reads result.cas.h5 and exports the PNGs (fc29p).
+        """
+        template = self.env.get_template("contours_only.jou.j2")
+        return template.render(
+            solver=solver_config,
+            case_file=case_file,
+            workspace=workspace,
+            cfd_mode=cfd_mode,
+        )
+
     def generate_slurm_script(
         self,
         slurm_config: dict,
         workspace: str,
         fluent_module: str = "ANSYS/2025R1",
         start_mode: str = "meshing",
+        contours_pass: bool = False,
     ) -> str:
         """Generate a SLURM batch script.
 
@@ -155,4 +177,5 @@ class JournalGenerator:
             workspace=workspace,
             fluent_module=fluent_module,
             start_mode=start_mode,
+            contours_pass=contours_pass,
         )

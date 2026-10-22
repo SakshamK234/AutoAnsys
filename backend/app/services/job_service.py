@@ -110,10 +110,15 @@ class JobService:
         else:
             from app.services.mesh_service import MeshService
             mesh_service = MeshService(self.db)
+            # Hash the POST-defaults config — MeshService.create_mesh hashes
+            # after profile resolution, so hashing the raw request here would
+            # never match an existing mesh (all-default configs especially).
             reusable = await mesh_service.find_reusable_mesh(
                 user=user,
                 geometry_id=data.geometry_id,
-                mesh_config=data.mesh_config.model_dump(),
+                mesh_config=apply_cfd_mode_mesh_defaults(
+                    data.cfd_mode, data.mesh_config
+                ).model_dump(),
                 cfd_mode=data.cfd_mode,
             )
             if reusable is not None:
@@ -180,6 +185,8 @@ class JobService:
                 detail="Associated geometry no longer exists",
             )
 
+        await self._enforce_active_job_cap(user)
+
         job.status = JobStatus.queued
         job.submitted_at = datetime.now(timezone.utc).replace(tzinfo=None)
         # MUST commit before enqueuing the Celery task. Otherwise the worker
@@ -193,6 +200,40 @@ class JobService:
 
         logger.info("Job %s enqueued for async cluster submission", job.id)
         return job
+
+    async def _enforce_active_job_cap(self, user: User) -> None:
+        """Cap queued+running jobs+meshes per user (MAX_ACTIVE_JOBS_PER_USER).
+
+        Keeps one teammate from monopolising the shared allocation; 0 disables.
+        """
+        from app.config import settings
+        from app.models.mesh import Mesh, MeshStatus
+        from sqlalchemy import func
+
+        cap = settings.MAX_ACTIVE_JOBS_PER_USER
+        if cap <= 0:
+            return
+        active_jobs = await self.db.execute(
+            select(func.count()).select_from(Job).where(
+                Job.user_id == user.id,
+                Job.status.in_([JobStatus.queued, JobStatus.running]),
+            )
+        )
+        active_meshes = await self.db.execute(
+            select(func.count()).select_from(Mesh).where(
+                Mesh.user_id == user.id,
+                Mesh.status.in_([MeshStatus.queued, MeshStatus.running]),
+            )
+        )
+        total = (active_jobs.scalar() or 0) + (active_meshes.scalar() or 0)
+        if total >= cap:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=(
+                    f"You already have {total} active run(s); the per-user limit is {cap}. "
+                    "Wait for one to finish or cancel it first."
+                ),
+            )
 
     # ── Sync Status ───────────────────────────────────────────────────────
 
@@ -221,7 +262,9 @@ class JobService:
             )
             return job
 
-        new_status = self._sync_batch_job(job)
+        import asyncio
+        # Paramiko is blocking — keep it off the event loop.
+        new_status = await asyncio.to_thread(self._sync_batch_job, job)
 
         if new_status and new_status != job.status:
             job.status = new_status
@@ -229,9 +272,9 @@ class JobService:
                 job.started_at = datetime.now(timezone.utc).replace(tzinfo=None)
             if new_status in (JobStatus.completed, JobStatus.failed, JobStatus.cancelled):
                 job.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
-                if new_status == JobStatus.completed:
-                    from app.tasks.job_tasks import download_results
-                    download_results.delay(str(job.id))
+                from app.tasks.job_tasks import download_results
+                # Results on success; logs + failure diagnosis otherwise.
+                download_results.delay(str(job.id), new_status != JobStatus.completed)
             await self.db.flush()
             await self.db.refresh(job)
 
@@ -308,8 +351,19 @@ class JobService:
     # ── Resubmit ──────────────────────────────────────────────────────────
 
     async def resubmit_job(self, user: User, job_id: uuid.UUID) -> Job:
-        """Clone a completed or failed job and submit the clone."""
+        """Clone a completed/failed job (keeping its mesh binding and group)
+        and submit the clone immediately."""
         original = await self._get_user_job(user, job_id)
+
+        # Keep the split-workflow mesh binding when the mesh is still usable —
+        # dropping it silently downgraded resubmits to a full re-mesh.
+        mesh_id = None
+        if original.mesh_id is not None:
+            from app.models.mesh import Mesh, MeshStatus
+            r = await self.db.execute(select(Mesh).where(Mesh.id == original.mesh_id))
+            m = r.scalar_one_or_none()
+            if m is not None and m.status == MeshStatus.completed:
+                mesh_id = m.id
 
         new_job = Job(
             user_id=user.id,
@@ -317,18 +371,47 @@ class JobService:
             name=f"{original.name} (resubmit)",
             status=JobStatus.draft,
             config=original.config,
+            group_id=original.group_id,
+            mesh_id=mesh_id,
         )
         self.db.add(new_job)
         await self.db.flush()
         await self.db.refresh(new_job)
-        return new_job
+        # Docstring contract: clone AND submit.
+        return await self.submit_job(user=user, job_id=new_job.id)
+
+    async def delete_job(self, user: User, job_id: uuid.UUID) -> None:
+        """Delete a non-active job (drafts and terminal states only)."""
+        job = await self._get_user_job(user, job_id)
+        if job.status in (JobStatus.queued, JobStatus.running):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Cancel the run before deleting it",
+            )
+
+        # Best-effort S3 cleanup of result objects; DB rows cascade.
+        from app.models.result_file import ResultFile
+        rfs = await self.db.execute(select(ResultFile).where(ResultFile.job_id == job.id))
+        keys = [rf.s3_key for rf in rfs.scalars().all()]
+        if keys:
+            try:
+                from app.utils.s3 import s3_client
+                s3 = s3_client()
+                from app.config import settings as app_settings
+                for key in keys:
+                    s3.delete_object(Bucket=app_settings.S3_BUCKET, Key=key)
+            except Exception:
+                logger.warning("S3 cleanup failed for job %s (non-fatal)", job.id)
+
+        await self.db.delete(job)
+        await self.db.flush()
 
     # ── Results ───────────────────────────────────────────────────────────
 
     async def get_force_data(self, user: User, job_id: uuid.UUID) -> list[dict]:
         """Retrieve force coefficient data from completed job results."""
         job = await self._get_user_job(user, job_id, allow_group=True)
-        if job.status != JobStatus.completed:
+        if job.status not in (JobStatus.completed, JobStatus.failed):
             return []
 
         from app.models.result_file import ResultFile
@@ -338,7 +421,7 @@ class JobService:
                 ResultFile.file_type == "forces_csv",
             )
         )
-        rf = result.scalar_one_or_none()
+        rf = result.scalars().first()
         if rf is None:
             return []
 
@@ -348,7 +431,7 @@ class JobService:
     async def get_residual_data(self, user: User, job_id: uuid.UUID) -> list[dict]:
         """Retrieve residual convergence data from completed job results."""
         job = await self._get_user_job(user, job_id, allow_group=True)
-        if job.status != JobStatus.completed:
+        if job.status not in (JobStatus.completed, JobStatus.failed):
             return []
 
         from app.models.result_file import ResultFile
@@ -358,7 +441,7 @@ class JobService:
                 ResultFile.file_type == "residuals_csv",
             )
         )
-        rf = result.scalar_one_or_none()
+        rf = result.scalars().first()
         if rf is None:
             return []
 

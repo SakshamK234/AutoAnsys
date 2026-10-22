@@ -15,6 +15,8 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     name: str
     password: str
+    # Required when the deployment sets INVITE_CODE (closed registration).
+    invite_code: str = ""
 
 
 class RefreshRequest(BaseModel):

@@ -174,6 +174,10 @@ class MeshService:
                 detail="Associated geometry no longer exists",
             )
 
+        # Same per-user active cap as jobs — meshes also burn allocation.
+        from app.services.job_service import JobService
+        await JobService(self.db)._enforce_active_job_cap(user)
+
         mesh.status = MeshStatus.queued
         mesh.submitted_at = datetime.now(timezone.utc).replace(tzinfo=None)
         # MUST commit before enqueuing the Celery task. Otherwise the worker
@@ -198,7 +202,9 @@ class MeshService:
         if not mesh.slurm_job_id:
             return mesh
 
-        new_status = self._sync_batch_mesh(mesh)
+        import asyncio
+        # Paramiko is blocking — keep it off the event loop.
+        new_status = await asyncio.to_thread(self._sync_batch_mesh, mesh)
         if new_status and new_status != mesh.status:
             mesh.status = new_status
             if new_status == MeshStatus.running and mesh.started_at is None:

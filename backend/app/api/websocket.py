@@ -54,11 +54,22 @@ async def job_live(
         return
 
     async with async_session() as db:
-        result = await db.execute(
-            select(Job).where(Job.id == job_uuid, Job.user_id == user_id)
-        )
+        result = await db.execute(select(Job).where(Job.id == job_uuid))
         job = result.scalar_one_or_none()
-        if job is None:
+        allowed = job is not None and job.user_id == user_id
+        if job is not None and not allowed and job.group_id is not None:
+            # Group members may watch a shared run live (same semantics as the
+            # /jobs/{id} read endpoints).
+            from app.models.group import GroupMembership
+
+            mem = await db.execute(
+                select(GroupMembership).where(
+                    GroupMembership.group_id == job.group_id,
+                    GroupMembership.user_id == user_id,
+                )
+            )
+            allowed = mem.scalar_one_or_none() is not None
+        if not allowed:
             await websocket.close(code=4003, reason="Job not found")
             return
         initial_status = job.status.value if hasattr(job.status, "value") else str(job.status)

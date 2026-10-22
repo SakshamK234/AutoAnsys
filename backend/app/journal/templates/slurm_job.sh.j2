@@ -11,7 +11,10 @@
 # RIGHT:                    --ntasks-per-node=N --cpus-per-task=1
 #SBATCH --ntasks-per-node={{ slurm.cores_per_node | default(64) }}
 #SBATCH --cpus-per-task=1
-#SBATCH --exclusive
+# NO --exclusive: it demands a fully idle node, and on a busy TinkerCliffs
+# that can mean days of queueing while mixed nodes hold thousands of idle
+# cores (observed 2026-10-22: 2 top-priority jobs pending 24 h behind it).
+# The --mem/--ntasks requests already reserve everything the run needs.
 #SBATCH --mem={{ slurm.memory_gb | default(243) }}G
 #SBATCH --time={{ "%02d" | format(slurm.walltime_hours | default(12)) }}:00:00
 #SBATCH --output={{ workspace }}/slurm-%j.out
@@ -109,6 +112,21 @@ if [ $FLUENT_EXIT -ne 0 ]; then
     tail -50 fluent.log
     exit $FLUENT_EXIT
 fi
+
+{% if contours_pass | default(false) %}
+# ── Contour render pass (fc29p, codified) ───────────────────────────────
+# The combined `-meshing -g` session above has no graphics subsystem, so the
+# PNGs come from a second `-gu -driver null` session in this same allocation
+# reading result.cas.h5. Non-fatal: a solve with no pictures still counts.
+if [ -f "{{ workspace }}/result.cas.h5" ] && [ -f "{{ workspace }}/contours.jou" ]; then
+    CONTOUR_CORES=$(( NCORES < 8 ? NCORES : 8 ))
+    echo "=== Contour pass ($(date)) — ${CONTOUR_CORES} cores ==="
+    timeout 30m fluent 3ddp -gu -driver null -t${CONTOUR_CORES} -i contours.jou \
+        > contours.log 2>&1 \
+        && echo "CONTOUR_PASS_OK" \
+        || echo "CONTOUR_PASS_FAILED (non-fatal) — see contours.log"
+fi
+{% endif %}
 
 echo ""
 echo "=== AutoAnsys Job Complete: $(date) ==="

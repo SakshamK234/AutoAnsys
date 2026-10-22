@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models.geometry import Geometry
 from app.models.user import User
+from app.utils.sanitize import sanitize_path
 
 
 # Fluent Meshing 2025R1 Watertight workflow accepts these CAD formats.
@@ -60,10 +61,27 @@ class GeometryService:
                 detail=f"Unsupported file extension '{ext or '(none)'}'. Allowed: {allowed}",
             )
 
-        file_bytes = await file.read()
-        file_size = len(file_bytes)
+        # Enforce the upload cap while reading, so an oversized body is
+        # rejected without ever being held fully in memory.
+        max_bytes = settings.MAX_UPLOAD_MB * 1024 * 1024
+        chunks: list[bytes] = []
+        file_size = 0
+        while chunk := await file.read(4 * 1024 * 1024):
+            file_size += len(chunk)
+            if file_size > max_bytes:
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail=f"Geometry exceeds the {settings.MAX_UPLOAD_MB} MB upload limit",
+                )
+            chunks.append(chunk)
+        file_bytes = b"".join(chunks)
+        if not file_bytes:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty")
 
-        stored_filename = f"{uuid.uuid4().hex}_{file.filename}"
+        # The stored S3 key uses a sanitized basename — the raw client filename
+        # is kept only as display metadata (original_name).
+        safe_name = sanitize_path(file.filename or "geometry") or "geometry"
+        stored_filename = f"{uuid.uuid4().hex}_{safe_name}"
         s3_key = f"geometries/{user.id}/{stored_filename}"
 
         # Upload to S3
@@ -99,8 +117,10 @@ class GeometryService:
         await self.db.delete(geometry)
 
     def generate_presigned_url(self, s3_key: str, expires_in: int = 3600) -> str:
-        """Generate a presigned download URL for a geometry file."""
-        return self.s3.generate_presigned_url(
+        """Generate a browser-reachable presigned download URL."""
+        from app.utils.s3 import s3_presign_client
+
+        return s3_presign_client().generate_presigned_url(
             "get_object",
             Params={"Bucket": settings.S3_BUCKET, "Key": s3_key},
             ExpiresIn=expires_in,

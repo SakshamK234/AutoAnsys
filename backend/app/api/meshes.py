@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_member
 from app.database import get_db
 from app.models.geometry import Geometry
 from app.models.group import Group, GroupMembership
@@ -48,7 +48,7 @@ async def _enrich(db: AsyncSession, mesh: Mesh) -> dict:
 async def create_mesh(
     body: MeshCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_member),
 ) -> dict:
     """Create a draft mesh record. Submit later via POST /{id}/submit."""
     service = MeshService(db)
@@ -146,7 +146,7 @@ async def get_mesh_status(
 async def submit_mesh(
     mesh_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_member),
 ) -> dict:
     service = MeshService(db)
     mesh = await service.submit_mesh(user=current_user, mesh_id=mesh_id)
@@ -168,7 +168,7 @@ async def sync_mesh(
 async def cancel_mesh(
     mesh_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_member),
 ) -> dict:
     service = MeshService(db)
     mesh = await service.cancel_mesh(user=current_user, mesh_id=mesh_id)
@@ -179,7 +179,7 @@ async def cancel_mesh(
 async def delete_mesh(
     mesh_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_member),
 ) -> None:
     service = MeshService(db)
     await service.delete_mesh(user=current_user, mesh_id=mesh_id)

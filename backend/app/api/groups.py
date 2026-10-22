@@ -7,7 +7,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_member
 from app.database import get_db
 from app.models.group import Group, GroupMembership
 from app.models.user import User
@@ -26,7 +26,7 @@ router = APIRouter(prefix="/api/groups", tags=["groups"])
 async def create_group(
     body: GroupCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_member),
 ) -> dict:
     group = Group(
         name=body.name.strip(),
@@ -119,7 +119,7 @@ async def get_group(
 async def join_group(
     body: GroupJoinRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_member),
 ) -> dict:
     result = await db.execute(
         select(Group).where(Group.invite_code == body.invite_code.strip())

@@ -250,10 +250,11 @@ def test_per_profile_mesh_workflow():
     assert "Fault-tolerant Meshing" in full
     # Both classify.
     assert "CLASSIFY_BEGIN" in comp and "CLASSIFY_BEGIN" in full
-    # Component: unique meshing-mode renames + solver-mode merge BY NAME
-    # (v4 — names survive the mode switch, ids do not; no carve).
+    # Component: solver-mode merge BY MESH-ZONE ID (v6 — the G2-validated
+    # carve mechanism; names do NOT survive the mode switch, >1000 ids do).
     assert "groups['body'] = body" in comp
-    assert "rename_face_zone" in comp
+    assert "if z > 1000 and z not in interior" in comp
+    assert "rename_face_zone" not in comp
     assert "/mesh/modify-zones/merge-zones " in comp  # by-name merge in assign.scm
     assert "merge_face_zones" not in comp  # meshing-mode merge cannot cross objects
     # Full-car-only pieces stay out of the component path.

@@ -34,6 +34,16 @@ class SSHManager:
             return
 
         self._client = paramiko.SSHClient()
+        # Host-key policy: trust-on-first-use, persisted. Known hosts are kept
+        # in a writable file next to the key (a mounted volume in Docker), so
+        # after the first connection a changed host key is REJECTED instead of
+        # silently accepted (plain AutoAddPolicy never rejects anything).
+        self._known_hosts = Path(self.key_path).expanduser().parent / "known_hosts_autoansys"
+        try:
+            self._known_hosts.touch(exist_ok=True)
+            self._client.load_host_keys(str(self._known_hosts))
+        except OSError:
+            logger.warning("Cannot persist known hosts at %s", self._known_hosts)
         self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
         key_file = Path(self.key_path).expanduser()
@@ -59,10 +69,12 @@ class SSHManager:
 
         logger.debug("Executing: %s", command)
         stdin, stdout, stderr = self._client.exec_command(command, timeout=120)
-        exit_code = stdout.channel.recv_exit_status()
-
+        # Read the streams BEFORE recv_exit_status(): waiting for exit first
+        # deadlocks when output exceeds the SSH channel window (classic
+        # paramiko pitfall — e.g. a site-wide `squeue`).
         out = stdout.read().decode().strip()
         err = stderr.read().decode().strip()
+        exit_code = stdout.channel.recv_exit_status()
 
         if exit_code != 0:
             logger.warning("Command failed (exit %d): %s\nstderr: %s", exit_code, command, err)

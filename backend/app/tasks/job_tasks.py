@@ -24,6 +24,7 @@ from app.database import SyncSessionLocal
 from app.models.job import Job, JobStatus
 from app.models.result_file import ResultFile
 from app.tasks.celery_app import celery_app
+from app.tasks.common import pinned_slurm_config
 
 logger = logging.getLogger(__name__)
 
@@ -41,14 +42,25 @@ _SLURM_STATE_MAP = {
     "PENDING": JobStatus.queued,
     "RUNNING": JobStatus.running,
     "COMPLETING": JobStatus.running,
+    "SUSPENDED": JobStatus.running,
+    "RESIZING": JobStatus.running,
+    "REQUEUED": JobStatus.queued,
     "COMPLETED": JobStatus.completed,
     "FAILED": JobStatus.failed,
     "TIMEOUT": JobStatus.failed,
     "OUT_OF_MEMORY": JobStatus.failed,
     "NODE_FAIL": JobStatus.failed,
+    "BOOT_FAIL": JobStatus.failed,
+    "DEADLINE": JobStatus.failed,
     "CANCELLED": JobStatus.cancelled,
+    "REVOKED": JobStatus.cancelled,
     "PREEMPTED": JobStatus.cancelled,
 }
+
+# A run still non-terminal this many seconds past its requested walltime has
+# fallen out of SLURM accounting (or the state never mapped) — reap it as
+# failed instead of leaving it "running" forever.
+_WALLTIME_GRACE_SECONDS = 2 * 3600
 
 # A queued job with no SLURM id after this many seconds has a lost submission
 # task (dropped from the broker, e.g. enqueued while the worker was down); the
@@ -93,6 +105,67 @@ def _publish_job_event(job_id: str, event_type: str, data: dict) -> None:
         r.close()
     except Exception:
         logger.debug("Failed to publish event for job %s", job_id)
+
+
+def _walltime_exceeded(job: Job) -> bool:
+    """True when a non-terminal job is well past its requested walltime."""
+    anchor = job.started_at or job.submitted_at
+    if anchor is None:
+        return False
+    try:
+        walltime_h = int((job.config or {}).get("slurm", {}).get("walltime_hours", 24))
+    except (TypeError, ValueError):
+        walltime_h = 24
+    age = (_utcnow_naive() - anchor).total_seconds()
+    # Queued jobs can legitimately wait a long time; only reap RUNNING ones by
+    # walltime. (Queued-with-id jobs stay visible in squeue and keep mapping.)
+    return job.status == JobStatus.running and age > walltime_h * 3600 + _WALLTIME_GRACE_SECONDS
+
+
+def _update_live_progress(job: Job, sftp, max_iterations: int) -> None:
+    """Tail fluent.log for a RUNNING job → stage marker + live residual/force
+    events over the existing WebSocket channel (GUI_PLAN G1.5).
+
+    Best-effort: any failure here must never break status polling.
+    """
+    from app.post import forces as post_forces
+    from app.post.transcript import parse_transcript
+
+    try:
+        tail = sftp.read_tail(f"{job.cluster_workspace}/fluent.log", 65536)
+        if not tail:
+            return
+        state = parse_transcript(tail)
+
+        progress = {
+            "stage": state.stage_label,
+            "marker": state.stage_marker,
+            "iteration": state.iteration,
+            "max_iterations": max_iterations,
+        }
+        if progress != (job.progress or {}):
+            job.progress = progress
+            _publish_job_event(str(job.id), "progress", progress)
+
+        if state.residuals:
+            last = state.residuals[-1]
+            _publish_job_event(str(job.id), "residual", last)
+        if state.report_values:
+            raw = state.report_values[-1]
+            rows = [{
+                "iteration": raw.get("iteration", 0),
+                "drag_force": raw.get("drag_force", 0.0),
+                "lift_force": raw.get("lift_force", 0.0),
+                "mom_y": raw.get("mom_y", 0.0),
+            }]
+            solver_cfg = (job.config or {}).get("solver", {})
+            processed = post_forces.process_force_rows(
+                rows, **post_forces.reference_kwargs_from_solver(solver_cfg)
+            )
+            if processed:
+                _publish_job_event(str(job.id), "force", processed[-1])
+    except Exception:
+        logger.debug("Live progress tail failed for job %s", job.id, exc_info=True)
 
 
 @celery_app.task(name="app.tasks.job_tasks.submit_job_to_cluster", bind=True, max_retries=2)
@@ -176,7 +249,7 @@ def submit_job_to_cluster(self, job_id: str) -> dict:
                 kind="job",
                 entity_id=str(job.id),
                 cfd_mode=job.config.get("cfd_mode", "individual_part"),
-                config=job.config,
+                config={**job.config, "slurm": pinned_slurm_config(job.config.get("slurm"))},
                 fluent_module=settings.FLUENT_MODULE,
                 git_sha=settings.GIT_SHA,
             )
@@ -191,7 +264,7 @@ def submit_job_to_cluster(self, job_id: str) -> dict:
                     cfd_mode=job.config.get("cfd_mode", "individual_part"),
                 )
                 slurm_sh = gen.generate_slurm_script(
-                    job.config["slurm"],
+                    pinned_slurm_config(job.config["slurm"]),
                     workspace=workspace,
                     fluent_module=settings.FLUENT_MODULE,
                     # Solver-from-case journal expects /define/... TUI paths,
@@ -229,14 +302,26 @@ def submit_job_to_cluster(self, job_id: str) -> dict:
                     workspace=workspace,
                     cfd_mode=job.config.get("cfd_mode", "individual_part"),
                 )
+                # Combined sessions run `-meshing -g` (no graphics): contours
+                # come from a follow-up `-gu -driver null` pass in the same
+                # allocation (fc29p). Render both the pass journal and a SLURM
+                # script that runs it after the solve.
+                contours_jou = gen.generate_contours_journal(
+                    solver_config=job.config["solver"],
+                    case_file=f"{workspace}/result.cas.h5",
+                    workspace=workspace,
+                    cfd_mode=job.config.get("cfd_mode", "individual_part"),
+                )
                 slurm_sh = gen.generate_slurm_script(
-                    job.config["slurm"],
+                    pinned_slurm_config(job.config["slurm"]),
                     workspace=workspace,
                     fluent_module=settings.FLUENT_MODULE,
+                    contours_pass=True,
                 )
 
                 sftp.upload_file(local_geom_path, f"{workspace}/{geom_filename}")
                 sftp.upload_string(combined_jou, f"{workspace}/autoansys.jou")
+                sftp.upload_string(contours_jou, f"{workspace}/contours.jou")
                 sftp.upload_string(slurm_sh, f"{workspace}/run.sh")
                 sftp.close()
 
@@ -298,8 +383,15 @@ def poll_active_jobs() -> dict:
             return {"polled": 0, "updated": 0}
 
         ssh = None
+        sftp = None
         try:
             ssh, slurm_mgr = _get_cluster_managers()
+            if not settings.CLUSTER_MOCK_MODE:
+                from app.cluster.sftp import SFTPManager
+                try:
+                    sftp = SFTPManager(ssh.open_sftp())
+                except Exception:
+                    logger.warning("SFTP unavailable this tick — skipping live progress")
 
             updated = 0
             for job in active:
@@ -331,7 +423,38 @@ def poll_active_jobs() -> dict:
                         logger.warning(
                             "Unknown SLURM state '%s' for job %s", slurm_state, job.id
                         )
+                        # Fall through to the walltime reaper below — an unmapped
+                        # state must not leave the job active forever.
+                        if _walltime_exceeded(job):
+                            job.status = JobStatus.failed
+                            job.completed_at = _utcnow_naive()
+                            job.error_message = (
+                                f"Run exceeded its requested walltime and SLURM reported "
+                                f"an unrecognised state ({raw_state!r}); marked failed."
+                            )
+                            download_results.delay(str(job.id), True)
+                            _publish_job_event(str(job.id), "status_update", {"status": "failed"})
+                            updated += 1
                         continue
+
+                    if new_status == job.status and new_status == JobStatus.running:
+                        if _walltime_exceeded(job):
+                            job.status = JobStatus.failed
+                            job.completed_at = _utcnow_naive()
+                            job.error_message = (
+                                "Run exceeded its requested walltime plus grace period; "
+                                "marked failed by the stale-run reaper."
+                            )
+                            download_results.delay(str(job.id), True)
+                            _publish_job_event(str(job.id), "status_update", {"status": "failed"})
+                            updated += 1
+                            continue
+                        if sftp is not None and job.cluster_workspace:
+                            max_iters = (
+                                (job.config or {}).get("solver", {})
+                                .get("convergence", {}).get("max_iterations", 0)
+                            )
+                            _update_live_progress(job, sftp, max_iters)
 
                     if new_status != job.status:
                         job.status = new_status
@@ -342,8 +465,11 @@ def poll_active_jobs() -> dict:
                         if new_status in (JobStatus.completed, JobStatus.failed, JobStatus.cancelled):
                             job.completed_at = _utcnow_naive()
                             event_data["completed_at"] = job.completed_at.isoformat()
-                            if new_status == JobStatus.completed:
-                                download_results.delay(str(job.id))
+                            # Results on success; logs + failure diagnosis always
+                            # (a failed run with no logs is undebuggable from the UI).
+                            download_results.delay(
+                                str(job.id), new_status != JobStatus.completed
+                            )
                         _publish_job_event(str(job.id), "status_update", event_data)
                         updated += 1
                 except Exception:
@@ -352,14 +478,25 @@ def poll_active_jobs() -> dict:
             db.commit()
             return {"polled": len(active), "updated": updated}
         finally:
+            if sftp is not None:
+                try:
+                    sftp.close()
+                except Exception:
+                    pass
             if ssh and not settings.CLUSTER_MOCK_MODE:
                 ssh.close()
 
 
 @celery_app.task(name="app.tasks.job_tasks.download_results")
-def download_results(job_id: str) -> dict:
-    """Download result files from cluster after job completion."""
-    logger.info("Downloading results for job %s", job_id)
+def download_results(job_id: str, failed: bool = False) -> dict:
+    """Download result files from the cluster after a run reaches a terminal state.
+
+    Runs for FAILED/CANCELLED jobs too (``failed=True``): those pull the SLURM
+    and Fluent logs and distill a human-readable ``error_message`` so the UI can
+    explain the failure (GUI_PLAN G1.6). Idempotent — a poller/manual-sync race
+    re-creates the file rows instead of duplicating them.
+    """
+    logger.info("Downloading results for job %s (failed=%s)", job_id, failed)
 
     with SyncSessionLocal() as db:
         job = db.query(Job).filter(Job.id == uuid.UUID(job_id)).first()
@@ -371,10 +508,23 @@ def download_results(job_id: str) -> dict:
 
         s3 = _get_s3_client()
 
-        if settings.CLUSTER_MOCK_MODE:
-            files_downloaded = _download_mock_results(db, job, s3)
-        else:
-            files_downloaded = _download_real_results(db, job, s3)
+        # Idempotency: replace any rows a concurrent/earlier download created.
+        db.query(ResultFile).filter(ResultFile.job_id == job.id).delete()
+
+        try:
+            if settings.CLUSTER_MOCK_MODE:
+                files_downloaded = _download_mock_results(db, job, s3)
+            else:
+                files_downloaded = _download_real_results(db, job, s3, failed=failed)
+        except Exception as exc:
+            logger.exception("Result download failed for job %s", job_id)
+            db.rollback()
+            job = db.query(Job).filter(Job.id == uuid.UUID(job_id)).first()
+            if job is not None:
+                note = f"Result download from the cluster failed: {exc}"
+                job.error_message = f"{job.error_message} | {note}" if job.error_message else note
+                db.commit()
+            return {"job_id": job_id, "error": str(exc)}
 
         db.commit()
         _publish_job_event(job_id, "results_ready", {"files_downloaded": files_downloaded})
@@ -454,10 +604,19 @@ def _download_mock_results(db, job: Job, s3) -> int:
     return files_created
 
 
-def _download_real_results(db, job: Job, s3) -> int:
-    """SFTP result files from cluster and upload to S3."""
+def _download_real_results(db, job: Job, s3, failed: bool = False) -> int:
+    """SFTP result files from the cluster and upload to S3.
+
+    Besides the solver outputs this always collects ``fluent.log`` and the
+    SLURM logs (the failure-diagnosis sources), derives ``residuals.csv`` from
+    the transcript (Fluent writes no residual file in batch — probe 6380354),
+    and on a failed run distills ``job.error_message`` from the logs.
+    """
+    import shutil
+
     from app.cluster.ssh_manager import SSHManager
     from app.cluster.sftp import SFTPManager
+    from app.post.transcript import failure_summary, parse_transcript, residuals_to_csv
 
     files_created = 0
     ssh = SSHManager()
@@ -468,8 +627,12 @@ def _download_real_results(db, job: Job, s3) -> int:
         "forces.csv": "forces_csv",
         "residuals.csv": "residuals_csv",
         "run_metadata.json": "run_metadata",
+        "fluent.log": "log",
+        "contours.log": "log",
+        "setup.cas.h5": "case_setup",
         "result.cas.h5": "case_data",
-        "result.msh.h5": "mesh_data",
+        "result.dat.h5": "case_data",
+        "mesh.cas.h5": "mesh_data",
         "contour_velocity.png": "contour_image",
         "contour_velocity_midplane.png": "contour_image",
         "contour_pressure.png": "contour_image",
@@ -479,10 +642,14 @@ def _download_real_results(db, job: Job, s3) -> int:
         "contour_wall_shear.png": "contour_image",
         "contour_tke_midplane.png": "contour_image",
     }
+    # On failure only the diagnostics come back — no multi-GB case files.
+    failure_whitelist = {"fluent.log", "run_metadata.json", "forces.csv"}
 
+    tmpdir = tempfile.mkdtemp(prefix="autoansys_results_")
+    transcript_text = ""
+    slurm_tail = ""
     try:
         entries = sftp.list_dir(job.cluster_workspace)
-        tmpdir = tempfile.mkdtemp(prefix="autoansys_results_")
 
         for entry in entries:
             fname = entry["name"]
@@ -491,14 +658,34 @@ def _download_real_results(db, job: Job, s3) -> int:
                 continue
             if file_type is None:
                 file_type = "slurm_log"
+            if failed and file_type not in ("log", "slurm_log", "run_metadata", "forces_csv"):
+                if fname not in failure_whitelist:
+                    continue
 
             remote_path = f"{job.cluster_workspace}/{fname}"
             local_path = os.path.join(tmpdir, fname)
-            sftp.download_file(remote_path, local_path)
+            try:
+                sftp.download_file(remote_path, local_path)
+            except Exception:
+                logger.warning("Could not download %s for job %s", fname, job.id)
+                continue
 
             file_size = os.path.getsize(local_path)
             s3_key = f"results/{job.id}/{fname}"
             s3.upload_file(local_path, settings.S3_BUCKET, s3_key)
+
+            if fname == "fluent.log":
+                try:
+                    with open(local_path, encoding="utf-8", errors="replace") as f:
+                        transcript_text = f.read()
+                except OSError:
+                    transcript_text = ""
+            if fname.startswith("slurm-") and fname.endswith(".out"):
+                try:
+                    with open(local_path, encoding="utf-8", errors="replace") as f:
+                        slurm_tail = f.read()[-8192:]
+                except OSError:
+                    slurm_tail = ""
 
             db.add(ResultFile(
                 job_id=job.id,
@@ -509,9 +696,37 @@ def _download_real_results(db, job: Job, s3) -> int:
             ))
             files_created += 1
 
-        import shutil
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        # Residual history: derived from the transcript (the journals cannot
+        # emit a residuals report file on 2025R1).
+        already_has_residuals = any(
+            rf.filename == "residuals.csv"
+            for rf in db.new if isinstance(rf, ResultFile)
+        )
+        if transcript_text:
+            state = parse_transcript(transcript_text)
+            if state.residuals and not already_has_residuals:
+                residuals_bytes = residuals_to_csv(state.residuals).encode()
+                res_key = f"results/{job.id}/residuals.csv"
+                s3.put_object(
+                    Bucket=settings.S3_BUCKET,
+                    Key=res_key,
+                    Body=residuals_bytes,
+                    ContentType="text/csv",
+                )
+                db.add(ResultFile(
+                    job_id=job.id,
+                    filename="residuals.csv",
+                    file_type="residuals_csv",
+                    s3_key=res_key,
+                    file_size=len(residuals_bytes),
+                ))
+                files_created += 1
+            if failed:
+                job.error_message = failure_summary(state, slurm_tail)
+        elif failed and not job.error_message:
+            job.error_message = failure_summary(parse_transcript(""), slurm_tail)
     finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
         sftp.close()
         ssh.close()
 

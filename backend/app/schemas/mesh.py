@@ -3,9 +3,16 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+import re
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.job import MeshConfig, SlurmConfig
+from app.utils import validation as vld
+
+# Absolute HPC directory: plain path segments only — no "..", no shell
+# metacharacters. "<username>" is allowed as a literal substitution token.
+_OUTPUT_PATH_RE = re.compile(r"^/(?:[A-Za-z0-9_.\-]+|<username>)(?:/(?:[A-Za-z0-9_.\-]+|<username>))*/?$")
 
 
 class MeshCreate(BaseModel):
@@ -19,6 +26,24 @@ class MeshCreate(BaseModel):
     # after the SLURM job completes. The literal token "<username>" is
     # substituted with the configured CLUSTER_USER at submit time.
     output_path: str | None = None
+
+    @field_validator("cfd_mode")
+    @classmethod
+    def _v_cfd_mode(cls, v: str) -> str:
+        return vld.one_of(v, ("individual_part", "full_car"), field="cfd_mode")
+
+    @field_validator("output_path")
+    @classmethod
+    def _v_output_path(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip()
+        if not _OUTPUT_PATH_RE.match(v) or ".." in v:
+            raise ValueError(
+                "output_path must be an absolute path of plain segments "
+                "(letters, digits, '_', '.', '-'; no '..')"
+            )
+        return v
 
 
 class MeshResponse(BaseModel):
@@ -40,6 +65,8 @@ class MeshResponse(BaseModel):
     started_at: datetime | None
     completed_at: datetime | None
     cluster_workspace: str | None
+    error_message: str | None = None
+    progress: dict | None = None
     created_at: datetime
 
     # Read-only enrichments (populated by the API layer, not the ORM).
@@ -68,6 +95,8 @@ class MeshStatusResponse(BaseModel):
     started_at: datetime | None
     completed_at: datetime | None
     cell_count: int | None = None
+    error_message: str | None = None
+    progress: dict | None = None
 
 
 class MeshListResponse(BaseModel):

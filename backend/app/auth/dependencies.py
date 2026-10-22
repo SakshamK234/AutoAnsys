@@ -57,3 +57,20 @@ async def get_current_user(
         )
 
     return user
+
+
+async def require_member(user: User = Depends(get_current_user)) -> User:
+    """Gate mutating/costly endpoints: guests are read-only.
+
+    Guest accounts exist so a teammate can browse results without signing up;
+    they must never be able to upload geometry or spend the team's SLURM
+    allocation (GUI_PLAN G4.3).
+    """
+    from app.models.user import UserRole
+
+    if user.role == UserRole.guest:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Guest accounts are read-only — register to submit work",
+        )
+    return user

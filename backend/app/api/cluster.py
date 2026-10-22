@@ -42,16 +42,22 @@ async def cluster_status(
         }
 
     try:
+        import asyncio
+
         from app.cluster.ssh_manager import SSHManager
         from app.cluster.slurm import SlurmManager
 
-        ssh = SSHManager()
-        ssh.connect()
-        slurm = SlurmManager(ssh)
+        def _query() -> tuple[dict, list]:
+            ssh = SSHManager()
+            ssh.connect()
+            try:
+                slurm = SlurmManager(ssh)
+                return slurm.get_cluster_info(), slurm.get_queue()
+            finally:
+                ssh.close()
 
-        info = slurm.get_cluster_info()
-        queue = slurm.get_queue()
-        ssh.close()
+        # Paramiko is blocking — keep it off the event loop.
+        info, queue = await asyncio.to_thread(_query)
 
         return {
             "connected": True,
@@ -69,9 +75,10 @@ async def cluster_status(
         }
     except Exception as exc:
         logger.warning("Failed to query cluster: %s", exc)
+        # Don't echo raw exception text (may contain hosts/paths) to clients.
         return {
             "connected": False,
             "nodes": {"total": 0, "idle": 0, "allocated": 0, "down": 0},
             "queue": {"pending": 0, "running": 0},
-            "message": f"Connection failed: {exc}",
+            "message": "Cluster connection failed — check backend logs",
         }

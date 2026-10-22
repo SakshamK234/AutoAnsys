@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_member
 from app.database import get_db
 from app.models.group import Group, GroupMembership
 from app.models.job import Job
@@ -55,7 +55,7 @@ async def _fetch_mesh_summary(db, mesh_id):
 async def create_job(
     body: JobCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_member),
 ) -> dict:
     """Create a new simulation job."""
     service = JobService(db)
@@ -138,7 +138,7 @@ async def list_jobs(
 async def create_sweep(
     body: SweepCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_member),
 ) -> dict:
     """Create a parametric sweep: multiple jobs varying a single parameter.
 
@@ -172,14 +172,29 @@ async def create_sweep(
         else:
             raise HTTPException(status_code=400, detail=f"Unknown config section: {section}")
 
+        def _step(container, key: str, *, full_path: list[str]):
+            """Resolve one path segment; supports dict keys and list indices."""
+            if isinstance(container, list):
+                try:
+                    idx = int(key)
+                    container[idx]
+                except (ValueError, IndexError):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid list index {key!r} in path {'.'.join(full_path)}",
+                    )
+                return idx
+            if not isinstance(container, dict) or key not in container:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid path key {key!r} in path {'.'.join(full_path)}",
+                )
+            return key
+
         for key in sub_path[:-1]:
-            if key not in target:
-                raise HTTPException(status_code=400, detail=f"Invalid path key: {key}")
-            target = target[key]
-        leaf_key = sub_path[-1]
-        if leaf_key not in target:
-            raise HTTPException(status_code=400, detail=f"Invalid leaf key: {leaf_key}")
-        target[leaf_key] = val
+            target = target[_step(target, key, full_path=body.sweep_param.path)]
+        leaf = _step(target, sub_path[-1], full_path=body.sweep_param.path)
+        target[leaf] = val
 
         param_label = body.sweep_param.path[-1].replace("_", " ").title()
         job_name = f"{body.base_name} — {param_label}={val}"
@@ -326,7 +341,7 @@ async def get_job_status(
 async def submit_job(
     job_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_member),
 ) -> dict:
     """Submit a draft job to the HPC cluster."""
     service = JobService(db)
@@ -367,7 +382,7 @@ async def sync_job_status(
 async def cancel_job(
     job_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_member),
 ) -> dict:
     """Cancel a queued or running job."""
     service = JobService(db)
@@ -384,7 +399,7 @@ async def cancel_job(
 async def resubmit_job(
     job_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_member),
 ) -> dict:
     """Clone a completed/failed job and resubmit it."""
     service = JobService(db)
@@ -395,6 +410,22 @@ async def resubmit_job(
         group_name = gr.scalar_one_or_none()
     mesh_summary = await _fetch_mesh_summary(db, new_job.mesh_id)
     return _job_to_response(new_job, group_name, mesh_summary)
+
+
+@router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_job(
+    job_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_member),
+) -> None:
+    """Delete a job that is not actively running.
+
+    Draft and terminal (completed/failed/cancelled) jobs can be removed; an
+    active run must be cancelled first. Result files cascade; S3 objects are
+    cleaned up best-effort.
+    """
+    service = JobService(db)
+    await service.delete_job(user=current_user, job_id=job_id)
 
 
 @router.get("/{job_id}/forces", response_model=list[ForceReport])

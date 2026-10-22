@@ -18,6 +18,7 @@ from app.config import settings
 from app.database import SyncSessionLocal
 from app.models.mesh import Mesh, MeshStatus
 from app.tasks.celery_app import celery_app
+from app.tasks.common import pinned_slurm_config
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +163,7 @@ def submit_mesh_to_cluster(self, mesh_id: str) -> dict:
             slurm_cfg["cores_per_node"] = min(user_cores, 16)
             slurm_cfg["nodes"] = 1  # meshing is single-node only
             slurm_sh = gen.generate_slurm_script(
-                slurm_cfg,
+                pinned_slurm_config(slurm_cfg),
                 workspace=workspace,
                 fluent_module=settings.FLUENT_MODULE,
             )
@@ -179,7 +180,7 @@ def submit_mesh_to_cluster(self, mesh_id: str) -> dict:
                 kind="mesh",
                 entity_id=str(mesh.id),
                 cfd_mode=mesh.config.get("cfd_mode", "individual_part"),
-                config=mesh.config,
+                config={**(mesh.config or {}), "slurm": pinned_slurm_config((mesh.config or {}).get("slurm"))},
                 fluent_module=settings.FLUENT_MODULE,
                 git_sha=settings.GIT_SHA,
             )
@@ -248,8 +249,15 @@ def poll_active_meshes() -> dict:
             return {"polled": 0, "updated": 0}
 
         ssh = None
+        sftp = None
         try:
             ssh, slurm_mgr = _get_cluster_managers()
+            if not settings.CLUSTER_MOCK_MODE:
+                from app.cluster.sftp import SFTPManager
+                try:
+                    sftp = SFTPManager(ssh.open_sftp())
+                except Exception:
+                    logger.warning("SFTP unavailable this tick — skipping mesh progress")
 
             updated = 0
             for mesh in active:
@@ -269,6 +277,16 @@ def poll_active_meshes() -> dict:
                         )
                         continue
 
+                    # Live stage progress for running meshes (GUI_PLAN G1.5) —
+                    # meshing is where the *_DONE markers carry the most signal.
+                    if (
+                        new_status == mesh.status
+                        and new_status == MeshStatus.running
+                        and sftp is not None
+                        and mesh.cluster_workspace
+                    ):
+                        _update_mesh_progress(mesh, sftp)
+
                     if new_status != mesh.status:
                         mesh.status = new_status
                         event_data: dict = {"status": new_status.value}
@@ -282,6 +300,8 @@ def poll_active_meshes() -> dict:
                             event_data["completed_at"] = mesh.completed_at.isoformat()
                             if new_status == MeshStatus.completed:
                                 download_mesh_artifact.delay(str(mesh.id))
+                            else:
+                                collect_mesh_failure.delay(str(mesh.id))
                         _publish_mesh_event(str(mesh.id), "status_update", event_data)
                         updated += 1
                 except Exception:
@@ -290,8 +310,69 @@ def poll_active_meshes() -> dict:
             db.commit()
             return {"polled": len(active), "updated": updated}
         finally:
+            if sftp is not None:
+                try:
+                    sftp.close()
+                except Exception:
+                    pass
             if ssh and not settings.CLUSTER_MOCK_MODE:
                 ssh.close()
+
+
+def _update_mesh_progress(mesh: Mesh, sftp) -> None:
+    """Tail fluent.log for a RUNNING mesh → stage marker progress events."""
+    from app.post.transcript import parse_transcript
+
+    try:
+        tail = sftp.read_tail(f"{mesh.cluster_workspace}/fluent.log", 65536)
+        if not tail:
+            return
+        state = parse_transcript(tail)
+        progress = {"stage": state.stage_label, "marker": state.stage_marker}
+        if progress != (mesh.progress or {}):
+            mesh.progress = progress
+            _publish_mesh_event(str(mesh.id), "progress", progress)
+    except Exception:
+        logger.debug("Live progress tail failed for mesh %s", mesh.id, exc_info=True)
+
+
+@celery_app.task(name="app.tasks.mesh_tasks.collect_mesh_failure")
+def collect_mesh_failure(mesh_id: str) -> dict:
+    """Pull logs for a FAILED/CANCELLED mesh and distill an error message."""
+    from app.post.transcript import failure_summary, parse_transcript
+
+    with SyncSessionLocal() as db:
+        mesh = db.query(Mesh).filter(Mesh.id == uuid.UUID(mesh_id)).first()
+        if not mesh or not mesh.cluster_workspace or settings.CLUSTER_MOCK_MODE:
+            return {"mesh_id": mesh_id, "skipped": True}
+        try:
+            from app.cluster.ssh_manager import SSHManager
+            from app.cluster.sftp import SFTPManager
+
+            ssh = SSHManager()
+            ssh.connect()
+            try:
+                sftp = SFTPManager(ssh.open_sftp())
+                transcript = sftp.read_tail(f"{mesh.cluster_workspace}/fluent.log", 262144)
+                slurm_tail = ""
+                for entry in sftp.list_dir(mesh.cluster_workspace):
+                    if entry["name"].startswith("slurm-") and entry["name"].endswith(".out"):
+                        slurm_tail = sftp.read_tail(
+                            f"{mesh.cluster_workspace}/{entry['name']}", 8192
+                        )
+                sftp.close()
+            finally:
+                ssh.close()
+            mesh.error_message = failure_summary(parse_transcript(transcript), slurm_tail)
+            db.commit()
+            return {"mesh_id": mesh_id, "error_message": mesh.error_message}
+        except Exception as exc:
+            logger.exception("Failure-log collection failed for mesh %s", mesh_id)
+            mesh.error_message = mesh.error_message or (
+                "Meshing failed and the logs could not be retrieved from the cluster."
+            )
+            db.commit()
+            return {"mesh_id": mesh_id, "error": str(exc)}
 
 
 # ── Download ───────────────────────────────────────────────────────────────
@@ -439,6 +520,23 @@ def download_mesh_artifact(mesh_id: str) -> dict:
                 "cell_count": mesh.cell_count,
             }
 
+        except FileNotFoundError:
+            # SLURM said COMPLETED but mesh.cas.h5 never appeared — the journal
+            # aborted upstream (exit-0 batch quirk). A mesh with no artifact is
+            # unusable; surface it as a failure, not a hollow "completed".
+            logger.exception("Mesh %s completed without mesh.cas.h5", mesh_id)
+            mesh.status = MeshStatus.failed
+            mesh.error_message = (
+                "The meshing run finished but never wrote mesh.cas.h5 — the "
+                "Fluent journal most likely aborted. See fluent.log on the cluster "
+                f"({mesh.cluster_workspace})."
+            )
+            db.commit()
+            collect_mesh_failure.delay(mesh_id)
+            _publish_mesh_event(mesh_id, "status_update", {"status": "failed"})
+            return {"mesh_id": mesh_id, "error": "mesh.cas.h5 missing"}
         except Exception as exc:
             logger.exception("Failed to download mesh artifact for %s", mesh_id)
+            mesh.error_message = f"Mesh artifact download failed: {exc}"
+            db.commit()
             return {"mesh_id": mesh_id, "error": str(exc)}

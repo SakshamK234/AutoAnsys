@@ -65,6 +65,9 @@ class Mesh(Base):
     started_at: Mapped[datetime | None] = mapped_column(nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
     cluster_workspace: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Failure reason + live stage progress — same semantics as Job.
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    progress: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow, nullable=False)
 
     # Relationships

@@ -38,6 +38,27 @@ class SFTPManager:
         logger.info("Downloading %s → %s", remote_path, local_path)
         self.sftp.get(remote_path, local_path)
 
+    def read_tail(self, remote_path: str, max_bytes: int = 65536) -> str:
+        """Read up to the last ``max_bytes`` of a remote file.
+
+        Used to tail ``fluent.log`` / report files for live progress without
+        pulling a multi-MB transcript on every poll tick. Returns "" when the
+        file does not exist yet.
+        """
+        try:
+            st = self.sftp.stat(remote_path)
+        except FileNotFoundError:
+            return ""
+        size = st.st_size or 0
+        offset = max(0, size - max_bytes)
+        with self.sftp.open(remote_path, "r") as f:
+            if offset:
+                f.seek(offset)
+            data = f.read(max_bytes)
+        text = data.decode(errors="replace") if isinstance(data, bytes) else data
+        # Drop a possibly mid-line first row when we started mid-file.
+        return text.split("\n", 1)[-1] if offset else text
+
     def read_file(self, remote_path: str) -> str:
         """Read a remote file and return its contents as a string."""
         with self.sftp.open(remote_path, "r") as f:

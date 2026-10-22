@@ -55,6 +55,12 @@ class Job(Base):
     mesh_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("meshes.id", ondelete="RESTRICT"), nullable=True
     )
+    # Human-readable failure reason (journal abort excerpt, SLURM verdict, …) —
+    # surfaced directly in the UI so a failed run is diagnosable without SSH.
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Live progress snapshot from the fluent.log stage markers:
+    # {"stage": str, "marker": str, "iteration": int, "max_iterations": int}.
+    progress: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         default=_utcnow, nullable=False
     )
