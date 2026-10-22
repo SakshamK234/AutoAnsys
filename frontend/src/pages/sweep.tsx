@@ -1,340 +1,205 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useGeometries } from '@/hooks/use-geometries';
-import { DEFAULT_MESH_CONFIG, DEFAULT_SOLVER_CONFIG, DEFAULT_SLURM_CONFIG } from '@/lib/constants';
-import { cn } from '@/lib/utils';
-import { Layers, Plus, X, AlertCircle, Check, ArrowRight } from 'lucide-react';
-import api from '@/lib/api';
+import api, { errorText } from '../lib/api';
+import { useGeometries } from '../lib/queries';
+import { useAuth, isGuest } from '../stores/auth';
+import { PageHeader } from '../components/chrome';
+import { Button, Field, Input, Panel, Select, useToast } from '../components/ui';
+import { Stripe } from '../components/livery';
+import type { CfdMode, Job } from '../types';
 
-/** Predefined sweep parameter options for FSAE CFD */
-const SWEEP_PRESETS = [
+interface Preset {
+  key: string;
+  label: string;
+  unit: string;
+  path: string[];
+  defaults: string;
+  note?: string;
+}
+
+/** Paths verified against the backend schema (velocity_inlets is a list —
+ * the index is a path segment). */
+const PRESETS: Preset[] = [
   {
-    label: 'Inlet Velocity',
-    path: ['solver', 'boundary_conditions', 'inlet', 'velocity'],
-    defaultValues: [15, 20, 25, 30],
+    key: 'velocity',
+    label: 'Inlet velocity',
     unit: 'm/s',
-    description: 'Sweep freestream velocity (autocross to top speed)',
+    path: ['solver', 'boundary_conditions', 'velocity_inlets', '0', 'velocity'],
+    defaults: '12, 15.65, 20, 25',
+    note: 'Reference velocity and moving ground stay at the profile value — coefficients compare at the profile normalization.',
   },
   {
-    label: 'Surface Mesh Max Size',
+    key: 'surf_max',
+    label: 'Surface mesh max size',
+    unit: 'mm',
     path: ['mesh', 'surface_mesh', 'max_size'],
-    defaultValues: [0.05, 0.08, 0.1, 0.15],
-    unit: 'm',
-    description: 'Mesh independence study — surface mesh refinement',
+    defaults: '200, 264, 330',
   },
   {
-    label: 'Volume Max Cell Length',
-    path: ['mesh', 'volume_mesh', 'max_cell_length'],
-    defaultValues: [0.08, 0.1, 0.15, 0.2],
-    unit: 'm',
-    description: 'Mesh independence study — volume mesh refinement',
+    key: 'surf_min',
+    label: 'Surface mesh min size',
+    unit: 'mm',
+    path: ['mesh', 'surface_mesh', 'min_size'],
+    defaults: '1.5, 2, 3',
   },
   {
-    label: 'BL First Layer Height',
-    path: ['mesh', 'volume_mesh', 'first_layer_height'],
-    defaultValues: [1e-5, 3e-5, 5e-5, 1e-4],
-    unit: 'm',
-    description: 'y+ sensitivity study',
-  },
-  {
-    label: 'BL Number of Layers',
-    path: ['mesh', 'volume_mesh', 'num_layers'],
-    defaultValues: [8, 12, 15, 20],
+    key: 'layers',
+    label: 'Prism layers',
     unit: 'layers',
-    description: 'Boundary layer resolution study',
+    path: ['mesh', 'volume_mesh', 'num_layers'],
+    defaults: '10, 15, 20',
   },
   {
-    label: 'Residual Target',
-    path: ['solver', 'convergence', 'residual_target'],
-    defaultValues: [1e-3, 5e-4, 1e-4, 5e-5],
-    unit: '',
-    description: 'Convergence sensitivity — tighter residual criteria',
+    key: 'first_layer',
+    label: 'First prism layer height',
+    unit: 'mm',
+    path: ['mesh', 'volume_mesh', 'first_layer_height_mm'],
+    defaults: '0.02, 0.05, 0.1',
   },
   {
-    label: 'Max Iterations',
-    path: ['solver', 'convergence', 'max_iterations'],
-    defaultValues: [500, 1000, 1500, 2000],
+    key: 'iters',
+    label: 'Iterations',
     unit: 'iters',
-    description: 'Iteration count sensitivity',
+    path: ['solver', 'convergence', 'max_iterations'],
+    defaults: '300, 600, 900',
   },
-] as const;
+];
 
-export function SweepPage() {
+export default function SweepPage() {
+  const geometries = useGeometries();
   const navigate = useNavigate();
-  const { data: geometryData } = useGeometries();
-  const geometries = geometryData?.items ?? [];
+  const toast = useToast();
+  const { user } = useAuth();
+  const guest = isGuest(user);
 
-  const [baseName, setBaseName] = useState('');
   const [geometryId, setGeometryId] = useState('');
-  const [selectedPreset, setSelectedPreset] = useState<number | null>(null);
-  const [customValues, setCustomValues] = useState<string>('');
-  const [autoSubmit, setAutoSubmit] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
-  const [result, setResult] = useState<{ count: number; names: string[] } | null>(null);
+  const [baseName, setBaseName] = useState('');
+  const [mode, setMode] = useState<CfdMode>('individual_part');
+  const [presetKey, setPresetKey] = useState(PRESETS[0].key);
+  const preset = PRESETS.find((p) => p.key === presetKey)!;
+  const [values, setValues] = useState(PRESETS[0].defaults);
+  const [autoSubmit, setAutoSubmit] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const preset = selectedPreset !== null ? SWEEP_PRESETS[selectedPreset] : null;
+  const parsed = useMemo(
+    () =>
+      values
+        .split(',')
+        .map((v) => v.trim())
+        .filter(Boolean)
+        .map(Number)
+        .filter((v) => !Number.isNaN(v)),
+    [values],
+  );
 
-  const parsedValues: (number | string)[] = (() => {
-    if (!preset) return [];
-    const raw = customValues.trim();
-    if (!raw) return [...preset.defaultValues];
-    return raw.split(',').map((v) => {
-      const trimmed = v.trim();
-      const num = Number(trimmed);
-      return isNaN(num) ? trimmed : num;
-    }).filter((v) => v !== '');
-  })();
-
-  const canSubmit = baseName.trim() && geometryId && preset && parsedValues.length >= 2;
-
-  const handleSubmit = async () => {
-    if (!canSubmit || !preset) return;
-    setSubmitting(true);
-    setError('');
-
+  async function submit() {
+    setBusy(true);
+    setError(null);
     try {
-      const res = await api.post('/jobs/sweep', {
+      const { data } = await api.post<{ jobs: Job[] }>('/jobs/sweep', {
         geometry_id: geometryId,
-        base_name: baseName.trim(),
-        // Sweeps currently default to the Individual Part SOP workflow.
-        // Full-car sweeps should be launched from the wizard until a mode
-        // selector is added here.
-        cfd_mode: 'individual_part',
-        mesh_config: DEFAULT_MESH_CONFIG,
-        solver_config: DEFAULT_SOLVER_CONFIG,
-        slurm_config: DEFAULT_SLURM_CONFIG,
-        sweep_param: {
-          path: [...preset.path],
-          values: parsedValues,
-        },
+        base_name: baseName,
+        cfd_mode: mode,
+        sweep_param: { path: preset.path, values: parsed },
         auto_submit: autoSubmit,
       });
-
-      setResult({
-        count: res.data.jobs.length,
-        names: res.data.jobs.map((j: any) => j.name),
-      });
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to create sweep. Please try again.');
+      toast('ok', `${data.jobs.length} runs created${autoSubmit ? ' and submitted' : ' as drafts'}`);
+      navigate('/runs');
+    } catch (e) {
+      setError(errorText(e));
     } finally {
-      setSubmitting(false);
+      setBusy(false);
     }
-  };
-
-  if (result) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Parametric Sweep Created</h1>
-          <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
-            {result.count} jobs have been {autoSubmit ? 'created and submitted' : 'created as drafts'}
-          </p>
-        </div>
-
-        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-6 space-y-4">
-          <div className="flex items-center gap-2 text-emerald-500">
-            <Check className="h-5 w-5" />
-            <span className="font-semibold">Sweep created successfully</span>
-          </div>
-          <div className="space-y-1.5">
-            {result.names.map((name, i) => (
-              <div key={i} className="flex items-center gap-2 text-sm">
-                <span className="text-[hsl(var(--muted-foreground))]">{i + 1}.</span>
-                <span>{name}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex gap-3">
-          <button
-            onClick={() => navigate('/jobs')}
-            className="flex items-center gap-2 rounded-lg bg-[hsl(var(--primary))] px-5 py-2.5 text-sm font-semibold text-[hsl(var(--primary-foreground))] hover:brightness-110 transition-all"
-          >
-            View All Jobs
-            <ArrowRight className="h-3.5 w-3.5" />
-          </button>
-          <button
-            onClick={() => { setResult(null); setBaseName(''); setSelectedPreset(null); setCustomValues(''); }}
-            className="flex items-center gap-2 rounded-lg border border-[hsl(var(--border))] px-4 py-2.5 text-sm font-medium hover:bg-[hsl(var(--accent))] transition-colors"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Create Another Sweep
-          </button>
-        </div>
-      </div>
-    );
   }
 
+  const valid = geometryId && baseName.trim() && parsed.length >= 2 && parsed.length <= 20;
+
   return (
-    <div className="space-y-6 max-w-3xl">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Parametric Sweep</h1>
-        <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
-          Create multiple simulations varying a single parameter across a range of values
-        </p>
-      </div>
-
-      {error && (
-        <div className="flex items-start gap-3 rounded-lg border border-rose-500/20 bg-rose-500/10 p-4">
-          <AlertCircle className="h-4 w-4 shrink-0 text-rose-500 mt-0.5" />
-          <div className="flex-1 text-sm text-rose-500">{error}</div>
-          <button onClick={() => setError('')} className="shrink-0 text-rose-500/60 hover:text-rose-500">
-            <X className="h-3.5 w-3.5" />
-          </button>
+    <div className="settle mx-auto max-w-2xl">
+      <PageHeader
+        title="Parametric sweep"
+        sub="One geometry, one knob, N runs — mesh-identical sweeps reuse the mesh automatically."
+      />
+      <Panel className="flex flex-col gap-5 p-6">
+        <Field label="Base name">
+          <Input value={baseName} onChange={(e) => setBaseName(e.target.value)} placeholder="e.g. RW v1.5 velocity sweep" />
+        </Field>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Geometry">
+            <Select value={geometryId} onChange={(e) => setGeometryId(e.target.value)}>
+              <option value="">Select…</option>
+              {geometries.data?.items.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.component_name || g.original_name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Profile">
+            <Select value={mode} onChange={(e) => setMode(e.target.value as CfdMode)}>
+              <option value="individual_part">Individual part</option>
+              <option value="full_car">Full car</option>
+            </Select>
+          </Field>
         </div>
-      )}
-
-      {/* Step 1: Base info */}
-      <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6 space-y-4">
-        <h3 className="text-sm font-semibold">Base Configuration</h3>
-
-        <div>
-          <label className="block text-xs font-medium mb-1.5">Sweep Name</label>
-          <input
-            type="text"
-            value={baseName}
-            onChange={(e) => setBaseName(e.target.value)}
-            placeholder="e.g., Wing Velocity Study"
-            className="w-full rounded-lg border border-[hsl(var(--input))] bg-[hsl(var(--background))] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium mb-1.5">Geometry</label>
-          <select
-            value={geometryId}
-            onChange={(e) => setGeometryId(e.target.value)}
-            className="w-full rounded-lg border border-[hsl(var(--input))] bg-[hsl(var(--background))] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]"
+        <Field label="Swept parameter">
+          <Select
+            value={presetKey}
+            onChange={(e) => {
+              setPresetKey(e.target.value);
+              setValues(PRESETS.find((p) => p.key === e.target.value)!.defaults);
+            }}
           >
-            <option value="">Select a geometry...</option>
-            {geometries.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.original_name} {g.component_name ? `(${g.component_name})` : ''}
+            {PRESETS.map((p) => (
+              <option key={p.key} value={p.key}>
+                {p.label} ({p.unit})
               </option>
             ))}
-          </select>
-        </div>
-      </div>
+          </Select>
+          {preset.note && <p className="mt-1.5 text-xs text-ink-3">{preset.note}</p>}
+        </Field>
+        <Field label={`Values (${preset.unit}, comma-separated, 2–20)`}>
+          <Input value={values} onChange={(e) => setValues(e.target.value)} className="font-mono" />
+        </Field>
 
-      {/* Step 2: Parameter selection */}
-      <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6 space-y-4">
-        <h3 className="text-sm font-semibold">Sweep Parameter</h3>
-        <p className="text-xs text-[hsl(var(--muted-foreground))]">
-          Choose which parameter to vary. Each value creates a separate simulation job.
-        </p>
-
-        <div className="grid gap-2">
-          {SWEEP_PRESETS.map((p, idx) => (
-            <button
-              key={idx}
-              onClick={() => { setSelectedPreset(idx); setCustomValues(''); }}
-              className={cn(
-                'flex items-start gap-3 rounded-lg border px-4 py-3 text-left transition-all',
-                selectedPreset === idx
-                  ? 'border-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.05)] ring-1 ring-[hsl(var(--primary)/0.2)]'
-                  : 'border-[hsl(var(--border))] hover:bg-[hsl(var(--accent))]'
-              )}
-            >
-              <div className="flex-1">
-                <p className="text-sm font-medium">{p.label}</p>
-                <p className="text-[11px] text-[hsl(var(--muted-foreground))] mt-0.5">{p.description}</p>
-              </div>
-              {p.unit && (
-                <span className="text-[10px] font-mono text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] rounded px-1.5 py-0.5 mt-0.5">
-                  {p.unit}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Step 3: Values */}
-      {preset && (
-        <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6 space-y-4">
-          <h3 className="text-sm font-semibold">Sweep Values</h3>
-
+        {/* Preview */}
+        {parsed.length >= 2 && baseName.trim() && (
           <div>
-            <label className="block text-xs font-medium mb-1.5">
-              Values (comma-separated) — defaults shown below
-            </label>
-            <input
-              type="text"
-              value={customValues}
-              onChange={(e) => setCustomValues(e.target.value)}
-              placeholder={preset.defaultValues.join(', ')}
-              className="w-full rounded-lg border border-[hsl(var(--input))] bg-[hsl(var(--background))] px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]"
-            />
-          </div>
-
-          <div className="flex flex-wrap gap-1.5">
-            {parsedValues.map((v, i) => (
-              <span
-                key={i}
-                className="inline-flex items-center rounded-full bg-[hsl(var(--primary)/0.1)] px-2.5 py-0.5 text-xs font-mono font-medium text-[hsl(var(--primary))]"
-              >
-                {typeof v === 'number' && v < 0.01 ? v.toExponential(0) : String(v)}
-                {preset.unit ? ` ${preset.unit}` : ''}
-              </span>
-            ))}
-          </div>
-
-          <p className="text-xs text-[hsl(var(--muted-foreground))]">
-            This will create <strong>{parsedValues.length}</strong> simulation jobs
-          </p>
-
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={autoSubmit}
-              onChange={(e) => setAutoSubmit(e.target.checked)}
-              className="rounded"
-            />
-            <span className="text-xs">Auto-submit all jobs to the cluster immediately</span>
-          </label>
-        </div>
-      )}
-
-      {/* Preview */}
-      {preset && parsedValues.length >= 2 && baseName.trim() && (
-        <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6 space-y-3">
-          <h3 className="text-sm font-semibold">Preview — Jobs to Create</h3>
-          <div className="space-y-1">
-            {parsedValues.map((v, i) => {
-              const paramLabel = preset.path[preset.path.length - 1].replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-              return (
-                <div key={i} className="flex items-center gap-2 text-sm rounded-lg bg-[hsl(var(--background))] px-3 py-2">
-                  <span className="text-[hsl(var(--muted-foreground))] text-xs font-mono w-5">{i + 1}</span>
-                  <span className="font-medium">{baseName} — {paramLabel}={v}</span>
+            <p className="section-head mb-2">Grid preview</p>
+            <div className="flex flex-col gap-1.5">
+              {parsed.map((v, i) => (
+                <div key={i} className="flex items-stretch border border-seam bg-ground/50">
+                  <Stripe id={`${baseName}-${v}`} className="w-[10px]" />
+                  <span className="font-mono tnum px-3 py-1.5 text-[13px]">
+                    {baseName} — {preset.label} = {v} {preset.unit}
+                  </span>
                 </div>
-              );
-            })}
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Submit */}
-      <div className="flex justify-end">
-        <button
-          onClick={handleSubmit}
-          disabled={!canSubmit || submitting}
-          className="flex items-center gap-2 rounded-lg bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50 transition-colors"
-        >
-          {submitting ? (
-            <>
-              <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-              Creating {parsedValues.length} jobs...
-            </>
-          ) : (
-            <>
-              <Layers className="h-3.5 w-3.5" />
-              Create {parsedValues.length} Jobs
-            </>
-          )}
-        </button>
-      </div>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={autoSubmit}
+            onChange={(e) => setAutoSubmit(e.target.checked)}
+            className="h-4 w-4 accent-[#1d43d8]"
+          />
+          Submit all runs immediately (unchecked saves drafts you can submit one by one)
+        </label>
+
+        {error && (
+          <p role="alert" className="border border-crit/40 bg-crit-tint px-3 py-2 text-sm text-crit">
+            {error}
+          </p>
+        )}
+
+        <Button variant="primary" disabled={!valid || guest} busy={busy} onClick={submit}>
+          {guest ? 'Guests are read-only' : `Create ${parsed.length || '…'} runs`}
+        </Button>
+      </Panel>
     </div>
   );
 }

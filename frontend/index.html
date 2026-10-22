@@ -4,16 +4,13 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <title>AutoAnsys · Pit Wall</title>
-    <script>
-      // Night race is the native mode; daylight is opt-in.
-      (function () {
-        if (localStorage.getItem('theme') !== 'light') document.documentElement.classList.add('dark');
-      })();
-    </script>
+    <!-- Typefaces are self-hosted (public/fonts) — the identity must not
+         depend on a CDN from campus/VPN networks. -->
+    <link rel="preload" href="/fonts/Saira.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/SairaCondensed-700.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/Archivo.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/fonts/fonts.css" />
+    <title>AutoAnsys</title>
   </head>
   <body>
     <div id="root"></div>

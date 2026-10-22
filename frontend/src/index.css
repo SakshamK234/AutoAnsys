@@ -1,265 +1,181 @@
 @import "tailwindcss";
 
-/* ════════════════════════════════════════════════════════════════════════
-   PIT WALL — AutoAnsys design system
-   Racing-telemetry identity: carbon graphite surfaces, burnt-orange signal
-   accent, deep maroon brand undertone, mono telemetry numerals, stage
-   lights. Dark is the native mode ("night race"); light is "daylight test".
-   ════════════════════════════════════════════════════════════════════════ */
+/* ───────────────────────────────────────────────────────────────────────────
+   AutoAnsys livery system.
+   Technical white ground, near-black ink, one committed racing-blue field.
+   State colors carry meaning only; run identity comes from livery stripes.
+─────────────────────────────────────────────────────────────────────────── */
+
+@theme {
+  --color-ground: #f7f7f4;
+  --color-paper: #fffffe;
+  --color-ink: #14161b;
+  --color-ink-2: #4a4e58;
+  --color-ink-3: #6b6f78; /* ≥4.5:1 on paper/ground at body sizes */
+  --color-seam: #dcdcd4;
+  --color-seam-strong: #b9b9b0;
+
+  --color-race: #1d43d8;
+  --color-race-deep: #1634ab;
+  --color-race-ink: #0e2060;
+  --color-race-tint: #e8edfc;
+  --color-race-text: #b9c6f4;
+
+  --color-ok: #097a49;
+  --color-ok-tint: #e3f3ea;
+  --color-warn: #b54708;
+  --color-warn-tint: #fdf0e3;
+  --color-crit: #d92d20;
+  --color-crit-tint: #fdeae8;
+
+  /* Livery series palette — run identity stripes and chart series. */
+  --color-livery-1: #1d43d8;
+  --color-livery-2: #d92d20;
+  --color-livery-3: #0a8f6a;
+  --color-livery-4: #e8a013;
+  --color-livery-5: #7a2fd0;
+  --color-livery-6: #0e8fb8;
+
+  --font-display: "Saira", sans-serif;
+  --font-condensed: "Saira Condensed", sans-serif;
+  --font-sans: "Archivo", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
 
 :root {
-  /* Daylight test session */
-  --background: 40 20% 96%;
-  --foreground: 220 15% 10%;
-  --card: 0 0% 100%;
-  --card-foreground: 220 15% 10%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 220 15% 10%;
-  --primary: 14 82% 47%;              /* burnt orange, daylight-tuned */
-  --primary-foreground: 40 20% 98%;
-  --secondary: 40 12% 91%;
-  --secondary-foreground: 220 15% 10%;
-  --muted: 40 12% 91%;
-  --muted-foreground: 220 8% 42%;
-  --accent: 40 12% 89%;
-  --accent-foreground: 220 15% 10%;
-  --destructive: 0 74% 46%;
-  --destructive-foreground: 40 20% 98%;
-  --border: 40 10% 84%;
-  --input: 40 10% 84%;
-  --ring: 14 82% 47%;
-  --radius: 0.375rem;
-
-  /* Brand + telemetry extensions */
-  --brand-maroon: 335 82% 21%;        /* VT Chicago maroon undertone */
-  --brand-orange: 14 82% 47%;
-  --signal-queued: 42 92% 44%;
-  --signal-running: 14 82% 47%;
-  --signal-complete: 145 60% 36%;
-  --signal-failed: 0 74% 46%;
-  --telemetry-glow: 14 82% 47%;
-  --grid-line: 220 10% 50%;
+  color-scheme: light;
 }
 
-.dark {
-  /* Night race */
-  --background: 220 17% 5%;
-  --foreground: 40 25% 94%;
-  --card: 219 16% 8%;
-  --card-foreground: 40 25% 94%;
-  --popover: 219 16% 8%;
-  --popover-foreground: 40 25% 94%;
-  --primary: 16 95% 56%;              /* signal orange, night-tuned */
-  --primary-foreground: 220 17% 5%;
-  --secondary: 219 14% 13%;
-  --secondary-foreground: 40 25% 94%;
-  --muted: 219 14% 13%;
-  --muted-foreground: 219 10% 64%;
-  --accent: 219 14% 15%;
-  --accent-foreground: 40 25% 94%;
-  --destructive: 0 78% 58%;
-  --destructive-foreground: 40 25% 94%;
-  --border: 219 13% 16%;
-  --input: 219 13% 16%;
-  --ring: 16 95% 56%;
-
-  --brand-maroon: 335 60% 34%;
-  --brand-orange: 16 95% 56%;
-  --signal-queued: 42 95% 58%;
-  --signal-running: 16 95% 56%;
-  --signal-complete: 145 55% 50%;
-  --signal-failed: 0 78% 58%;
-  --telemetry-glow: 16 95% 56%;
-  --grid-line: 219 10% 60%;
-}
-
-* {
-  border-color: hsl(var(--border));
+html,
+body,
+#root {
+  height: 100%;
 }
 
 body {
-  background-color: hsl(var(--background));
-  color: hsl(var(--foreground));
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--color-ground);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
-/* Display face — squared, motorsport character. Headings & nav. */
-h1, h2, h3, .font-display {
-  font-family: 'Chakra Petch', 'Inter', system-ui, sans-serif;
-  letter-spacing: 0.01em;
+/* Browser surfaces carry the livery too. */
+::selection {
+  background: var(--color-race);
+  color: #fff;
+}
+* {
+  caret-color: var(--color-race);
+}
+:focus-visible {
+  outline: 2px solid var(--color-race);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-seam-strong) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-seam-strong);
+  border: 3px solid var(--color-ground);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-code, pre, .font-mono {
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
-}
-
-/* ── Telemetry numerals — the signature readout style ─────────────────── */
-.telemetry {
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
+/* Tabular numerals everywhere numbers column up. */
+.tnum {
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
 }
 
-.telemetry-hero {
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-variant-numeric: tabular-nums;
+/* Section heads: condensed caps with a hairline that runs to the edge. */
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--font-condensed);
   font-weight: 700;
-  letter-spacing: -0.03em;
-  text-shadow: 0 0 24px hsl(var(--telemetry-glow) / 0.35);
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-ink-2);
+}
+.section-head::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--color-seam);
 }
 
-/* ── Carbon weave — subtle texture for hero surfaces ──────────────────── */
-.carbon-surface {
-  background-color: hsl(var(--card));
-  background-image:
-    repeating-linear-gradient(45deg,
-      hsl(var(--foreground) / 0.015) 0 2px, transparent 2px 6px),
-    repeating-linear-gradient(-45deg,
-      hsl(var(--foreground) / 0.015) 0 2px, transparent 2px 6px);
+/* Angled rubber-stamp verdict (jet-age ticket-wallet raise). */
+.stamp {
+  display: inline-block;
+  transform: rotate(-6deg);
+  border: 2.5px solid currentColor;
+  border-radius: 4px;
+  padding: 2px 12px;
+  font-family: var(--font-condensed);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='40'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.6' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.85 0.15'/%3E%3C/filter%3E%3Crect width='120' height='40' fill='white' filter='url(%23n)'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='40'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.6' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.85 0.15'/%3E%3C/filter%3E%3Crect width='120' height='40' fill='white' filter='url(%23n)'/%3E%3C/svg%3E");
+  mask-size: 120px 40px;
 }
 
-/* ── Racing stripe — brand gradient hairline ──────────────────────────── */
-.racing-stripe {
-  background: linear-gradient(90deg,
-    hsl(var(--brand-maroon)) 0%,
-    hsl(var(--brand-orange)) 55%,
-    hsl(var(--brand-orange) / 0) 100%);
-}
-
-/* Kerb strip — angled caution pattern for section dividers */
-.kerb-strip {
-  background: repeating-linear-gradient(-45deg,
-    hsl(var(--brand-orange)) 0 10px,
-    hsl(var(--background)) 10px 20px);
+/* Checkered strip for completed/accent moments (12×2 grid, ink on clear). */
+.checker {
+  height: 8px;
+  background:
+    repeating-conic-gradient(var(--color-ink) 0% 25%, transparent 0% 50%) 0 0 /
+    8px 8px;
   opacity: 0.9;
 }
 
-/* ── Chamfer — the angled corner cut used on cards & buttons ──────────── */
-.chamfer {
-  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+/* One authored entrance: content panels rise 4px and settle. Used on route
+   mount only, never scattered per-card. */
+@keyframes settle {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
-.chamfer-sm {
-  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
+.settle {
+  animation: settle 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-
-/* ── Pit card — the standard content surface ──────────────────────────── */
-.pit-card {
-  background-color: hsl(var(--card));
-  border: 1px solid hsl(var(--border));
-  border-radius: var(--radius);
-  position: relative;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
-}
-.pit-card:hover {
-  border-color: hsl(var(--primary) / 0.45);
-  box-shadow: 0 0 0 1px hsl(var(--primary) / 0.15), 0 8px 32px -12px hsl(var(--primary) / 0.25);
-}
-.pit-card--rail::before {
-  content: '';
-  position: absolute;
-  left: 0; top: 10px; bottom: 10px;
-  width: 3px;
-  border-radius: 2px;
-  background: linear-gradient(180deg, hsl(var(--brand-orange)), hsl(var(--brand-maroon)));
+@media (prefers-reduced-motion: reduce) {
+  .settle {
+    animation: none;
+  }
+  * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
 }
 
-/* ── Stage lights (F1 start-light job progress) ───────────────────────── */
-.stage-light {
-  width: 12px; height: 12px;
-  border-radius: 9999px;
-  background: hsl(var(--muted));
-  border: 1px solid hsl(var(--border));
-  transition: background 0.3s ease, box-shadow 0.3s ease;
+/* Live telemetry pulse on the stage chip currently running. */
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
 }
-.stage-light--done {
-  background: hsl(var(--signal-complete));
-  border-color: hsl(var(--signal-complete));
-  box-shadow: 0 0 8px hsl(var(--signal-complete) / 0.6);
-}
-.stage-light--active {
-  background: hsl(var(--signal-running));
-  border-color: hsl(var(--signal-running));
-  box-shadow: 0 0 10px hsl(var(--signal-running) / 0.8);
-  animation: pulse-glow 1.2s ease-in-out infinite;
-}
-.stage-light--failed {
-  background: hsl(var(--signal-failed));
-  border-color: hsl(var(--signal-failed));
-  box-shadow: 0 0 10px hsl(var(--signal-failed) / 0.7);
-}
-
-/* ── Status pill signal colors (reserved — never reused for chart series) */
-.signal-queued   { color: hsl(var(--signal-queued));   background: hsl(var(--signal-queued) / 0.12); }
-.signal-running  { color: hsl(var(--signal-running));  background: hsl(var(--signal-running) / 0.12); }
-.signal-complete { color: hsl(var(--signal-complete)); background: hsl(var(--signal-complete) / 0.12); }
-.signal-failed   { color: hsl(var(--signal-failed));   background: hsl(var(--signal-failed) / 0.12); }
-
-/* ── Checkered micro-flag (completed accents, 8px cells) ──────────────── */
-.checkered {
-  background-image:
-    linear-gradient(45deg, hsl(var(--foreground) / 0.55) 25%, transparent 25%, transparent 75%, hsl(var(--foreground) / 0.55) 75%),
-    linear-gradient(45deg, hsl(var(--foreground) / 0.55) 25%, transparent 25%, transparent 75%, hsl(var(--foreground) / 0.55) 75%);
-  background-size: 8px 8px;
-  background-position: 0 0, 4px 4px;
-}
-
-/* ── Track grid backdrop (login / empty states) ───────────────────────── */
-.bg-grid-pattern {
-  background-image:
-    linear-gradient(hsl(var(--grid-line) / 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, hsl(var(--grid-line) / 0.06) 1px, transparent 1px);
-  background-size: 40px 40px;
-}
-.bg-apex-glow {
-  background:
-    radial-gradient(60% 50% at 70% 10%, hsl(var(--brand-maroon) / 0.35) 0%, transparent 70%),
-    radial-gradient(45% 45% at 20% 90%, hsl(var(--brand-orange) / 0.14) 0%, transparent 70%);
-}
-
-/* ── Speed lines — motion accent under headings ───────────────────────── */
-.speed-lines {
-  position: relative;
-}
-.speed-lines::after {
-  content: '';
-  position: absolute;
-  left: 0; bottom: -6px;
-  height: 2px; width: 48px;
-  background: hsl(var(--primary));
-  box-shadow: 56px 0 0 -0.5px hsl(var(--primary) / 0.5), 104px 0 0 -1px hsl(var(--primary) / 0.25);
-}
-
-/* Custom scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: hsl(var(--muted-foreground) / 0.3); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: hsl(var(--primary) / 0.5); }
-
-/* Animations */
-@keyframes fade-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-@keyframes slide-in-left {
-  from { opacity: 0; transform: translateX(-12px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-@keyframes pulse-glow {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.55; }
-}
-@keyframes stripe-sweep {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(200%); }
-}
-
-.animate-fade-in { animation: fade-in 0.4s ease-out both; }
-.animate-slide-in-left { animation: slide-in-left 0.3s ease-out both; }
-
-/* Glass surface (kept for dialogs) */
-.glass-surface {
-  backdrop-filter: blur(12px) saturate(150%);
-  -webkit-backdrop-filter: blur(12px) saturate(150%);
+.live-dot {
+  animation: live-pulse 1.6s ease-in-out infinite;
 }

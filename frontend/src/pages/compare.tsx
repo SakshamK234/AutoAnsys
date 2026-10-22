@@ -1,399 +1,321 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import {
-  LineChart,
+  CartesianGrid,
+  Legend,
   Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
 } from 'recharts';
-import { useJobs } from '@/hooks/use-jobs';
-import { cn, formatDate } from '@/lib/utils';
-import { GitCompareArrows, X, BarChart3, TrendingDown } from 'lucide-react';
-import api from '@/lib/api';
-import type { Job, ForceReport, ResidualData } from '@/types';
+import { X } from 'lucide-react';
+import api from '../lib/api';
+import { useJobs } from '../lib/queries';
+import { liveryHex, carNumber } from '../lib/livery';
+import { formatCoeff, formatForce } from '../lib/format';
+import { PageHeader } from '../components/chrome';
+import { EmptyState, Loading, Select, Tabs } from '../components/ui';
+import { Plate } from '../components/livery';
+import { plateauStats } from '../lib/plateau';
+import type { ForcePoint, Job, ResidualPoint } from '../types';
 
-const JOB_COLORS = ['#f97316', '#06b6d4', '#22c55e', '#a78bfa', '#fb7185', '#eab308'];
-
-interface CompareData {
+interface CompareEntry {
   job: Job;
-  forces: ForceReport[];
-  residuals: ResidualData[];
+  forces: ForcePoint[];
+  residuals: ResidualPoint[];
 }
 
-function JobSelector({
-  selectedIds,
-  onAdd,
-  onRemove,
-}: {
-  selectedIds: string[];
-  onAdd: (id: string) => void;
-  onRemove: (id: string) => void;
-}) {
-  const { data } = useJobs({ status: 'completed', limit: 50 });
-  const jobs = data?.items ?? [];
-  const available = jobs.filter((j) => !selectedIds.includes(j.id));
+const AXIS = { stroke: '#80848f', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' };
+
+export default function ComparePage() {
+  const [ids, setIds] = useState<string[]>([]);
+  const completed = useJobs({ status: 'completed', limit: 100 });
+  const [tab, setTab] = useState('forces');
+  const [metric, setMetric] = useState<'cd' | 'cl' | 'cm'>('cd');
+
+  const compare = useQuery({
+    queryKey: ['compare', ids],
+    queryFn: async () => (await api.get<CompareEntry[]>(`/jobs/compare/data?ids=${ids.join(',')}`)).data,
+    enabled: ids.length >= 2,
+  });
+
+  // One color per selected run, keyed by its livery hue so identity matches
+  // everywhere else in the app.
+  const entries = useMemo(() => compare.data ?? [], [compare.data]);
+  const colorOf = (id: string) => liveryHex(id);
+
+  const forceSeries = useMemo(() => mergeByIteration(entries, (e) => e.forces, metric), [entries, metric]);
+  const residualSeries = useMemo(
+    () => mergeByIteration(entries, (e) => e.residuals, 'continuity'),
+    [entries],
+  );
+
+  const addable = completed.data?.items.filter((j) => !ids.includes(j.id)) ?? [];
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap gap-2">
-        {selectedIds.map((id, idx) => {
-          const job = jobs.find((j) => j.id === id);
+    <div className="settle">
+      <PageHeader title="Compare runs" sub="Overlay 2–6 finished runs — same stripe colors as everywhere else." />
+
+      {/* Selector */}
+      <div className="mb-5 flex flex-wrap items-center gap-2">
+        {ids.map((id) => {
+          const j = completed.data?.items.find((x) => x.id === id) ?? entries.find((e) => e.job.id === id)?.job;
           return (
-            <div
-              key={id}
-              className="flex items-center gap-2 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-3 py-1.5"
-            >
-              <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: JOB_COLORS[idx] }} />
-              <span className="text-sm font-medium">{job?.name || id.slice(0, 8)}</span>
-              <button onClick={() => onRemove(id)} className="text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]">
-                <X className="h-3 w-3" />
+            <span key={id} className="flex items-stretch border border-seam bg-paper text-sm">
+              <span className="w-1.5 shrink-0" style={{ background: colorOf(id) }} aria-hidden />
+              <span className="flex items-center gap-2 py-1 pr-2 pl-2">
+              <span className="font-mono tnum text-xs text-ink-3">#{carNumber(id)}</span>
+              <span className="max-w-44 truncate font-medium">{j?.name ?? id.slice(0, 8)}</span>
+              <button
+                aria-label="Remove from comparison"
+                className="cursor-pointer text-ink-3 hover:text-crit"
+                onClick={() => setIds((v) => v.filter((x) => x !== id))}
+              >
+                <X size={13} />
               </button>
-            </div>
+              </span>
+            </span>
           );
         })}
-      </div>
-      {selectedIds.length < 6 && available.length > 0 && (
-        <select
-          onChange={(e) => {
-            if (e.target.value) {
-              onAdd(e.target.value);
-              e.target.value = '';
-            }
-          }}
-          className="w-full rounded-lg border border-[hsl(var(--input))] bg-[hsl(var(--card))] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]"
-          defaultValue=""
-        >
-          <option value="" disabled>
-            + Add a completed job to compare...
-          </option>
-          {available.map((j) => (
-            <option key={j.id} value={j.id}>
-              {j.name} — {formatDate(j.completed_at || j.created_at)}
-            </option>
-          ))}
-        </select>
-      )}
-    </div>
-  );
-}
-
-function ForceComparisonChart({ data }: { data: CompareData[] }) {
-  // Build merged dataset: for each job, show Cd over iterations
-  // We'll show Cd, Cl, Cm as separate sub-charts
-  const metrics = [
-    { key: 'cd', label: 'Drag Coefficient (Cd)' },
-    { key: 'cl', label: 'Lift Coefficient (Cl)' },
-    { key: 'cm', label: 'Moment Coefficient (Cm)' },
-  ] as const;
-
-  return (
-    <div className="space-y-6">
-      {metrics.map((metric) => {
-        // Build merged data keyed by iteration
-        const iterMap = new Map<number, Record<string, number>>();
-        data.forEach((d, idx) => {
-          d.forces.forEach((f) => {
-            const existing = iterMap.get(f.iteration) || { iteration: f.iteration };
-            existing[`job_${idx}`] = f[metric.key];
-            iterMap.set(f.iteration, existing);
-          });
-        });
-        const chartData = Array.from(iterMap.values()).sort((a, b) => a.iteration - b.iteration);
-
-        return (
-          <div key={metric.key}>
-            <h4 className="text-sm font-semibold mb-2">{metric.label}</h4>
-            <div className="h-[280px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="iteration" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: 'hsl(var(--card))',
-                      border: '1px solid hsl(var(--border))',
-                      borderRadius: '8px',
-                      fontSize: '12px',
-                    }}
-                  />
-                  <Legend />
-                  {data.map((d, idx) => (
-                    <Line
-                      key={idx}
-                      type="monotone"
-                      dataKey={`job_${idx}`}
-                      name={d.job.name}
-                      stroke={JOB_COLORS[idx]}
-                      dot={false}
-                      strokeWidth={2}
-                    />
-                  ))}
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function ResidualComparisonChart({ data }: { data: CompareData[] }) {
-  // Show continuity residual for each job
-  const iterMap = new Map<number, Record<string, number>>();
-  data.forEach((d, idx) => {
-    d.residuals.forEach((r) => {
-      const existing = iterMap.get(r.iteration) || { iteration: r.iteration };
-      existing[`job_${idx}`] = r.continuity;
-      iterMap.set(r.iteration, existing);
-    });
-  });
-  const chartData = Array.from(iterMap.values()).sort((a, b) => a.iteration - b.iteration);
-
-  return (
-    <div>
-      <h4 className="text-sm font-semibold mb-2">Continuity Residual Convergence</h4>
-      <div className="h-[350px] w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-            <XAxis dataKey="iteration" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-            <YAxis scale="log" domain={['auto', 'auto']} stroke="hsl(var(--muted-foreground))" fontSize={12} />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: 'hsl(var(--card))',
-                border: '1px solid hsl(var(--border))',
-                borderRadius: '8px',
-                fontSize: '12px',
-              }}
-            />
-            <Legend />
-            {data.map((d, idx) => (
-              <Line
-                key={idx}
-                type="monotone"
-                dataKey={`job_${idx}`}
-                name={d.job.name}
-                stroke={JOB_COLORS[idx]}
-                dot={false}
-                strokeWidth={1.5}
-              />
+        {ids.length < 6 && (
+          <Select
+            value=""
+            onChange={(e) => e.target.value && setIds((v) => [...v, e.target.value])}
+            className="w-64"
+            aria-label="Add run to comparison"
+          >
+            <option value="">+ Add a finished run…</option>
+            {addable.map((j) => (
+              <option key={j.id} value={j.id}>
+                {j.name}
+              </option>
             ))}
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
-  );
-}
-
-function ConfigComparison({ data }: { data: CompareData[] }) {
-  if (data.length < 2) return null;
-
-  const configKeys = [
-    { path: ['mesh', 'surface_mesh', 'min_size'], label: 'Surface Min Size' },
-    { path: ['mesh', 'surface_mesh', 'max_size'], label: 'Surface Max Size' },
-    { path: ['mesh', 'volume_mesh', 'max_cell_length'], label: 'Volume Max Cell' },
-    { path: ['mesh', 'boundary_layers', 'num_layers'], label: 'BL Layers' },
-    { path: ['mesh', 'boundary_layers', 'first_layer_height'], label: 'BL First Height' },
-    { path: ['solver', 'turbulence', 'model'], label: 'Turbulence Model' },
-    { path: ['solver', 'boundary_conditions', 'inlet', 'velocity'], label: 'Inlet Velocity' },
-    { path: ['solver', 'solution_methods', 'scheme'], label: 'Solver Scheme' },
-    { path: ['solver', 'convergence', 'max_iterations'], label: 'Max Iterations' },
-    { path: ['solver', 'convergence', 'residual_target'], label: 'Residual Target' },
-    { path: ['slurm', 'nodes'], label: 'Nodes' },
-    { path: ['slurm', 'cores_per_node'], label: 'Cores/Node' },
-  ];
-
-  function getNestedValue(obj: any, path: string[]): string {
-    let val = obj;
-    for (const key of path) {
-      if (val == null) return '—';
-      val = val[key];
-    }
-    if (val == null) return '—';
-    if (typeof val === 'number' && val < 0.01) return val.toExponential(1);
-    return String(val);
-  }
-
-  return (
-    <div>
-      <h4 className="text-sm font-semibold mb-3">Configuration Comparison</h4>
-      <div className="overflow-x-auto rounded-xl border border-[hsl(var(--border))]">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))]">
-              <th className="px-4 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
-                Parameter
-              </th>
-              {data.map((d, idx) => (
-                <th key={idx} className="px-4 py-2 text-left text-[10px] font-semibold uppercase tracking-wide">
-                  <div className="flex items-center gap-1.5">
-                    <div className="h-2 w-2 rounded-full" style={{ backgroundColor: JOB_COLORS[idx] }} />
-                    <span className="truncate max-w-[120px]">{d.job.name}</span>
-                  </div>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {configKeys.map((ck) => {
-              const values = data.map((d) => getNestedValue(d.job.config, ck.path));
-              const allSame = values.every((v) => v === values[0]);
-              return (
-                <tr key={ck.label} className="border-b border-[hsl(var(--border))] last:border-0">
-                  <td className="px-4 py-2 text-[hsl(var(--muted-foreground))] font-medium">{ck.label}</td>
-                  {values.map((v, i) => (
-                    <td
-                      key={i}
-                      className={cn(
-                        'px-4 py-2 font-mono text-xs',
-                        !allSame && 'font-semibold text-[hsl(var(--primary))]'
-                      )}
-                    >
-                      {v}
-                    </td>
-                  ))}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function FinalValuesSummary({ data }: { data: CompareData[] }) {
-  return (
-    <div>
-      <h4 className="text-sm font-semibold mb-3">Final Force Coefficients</h4>
-      <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-        {data.map((d, idx) => {
-          const lastForce = d.forces.length > 0 ? d.forces[d.forces.length - 1] : null;
-          return (
-            <div
-              key={idx}
-              className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4"
-            >
-              <div className="flex items-center gap-2 mb-3">
-                <div className="h-3 w-3 rounded-full" style={{ backgroundColor: JOB_COLORS[idx] }} />
-                <span className="text-sm font-semibold truncate">{d.job.name}</span>
-              </div>
-              {lastForce ? (
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  {(['cd', 'cl', 'cm'] as const).map((k) => (
-                    <div key={k}>
-                      <p className="text-[10px] font-medium text-[hsl(var(--muted-foreground))] uppercase">{k}</p>
-                      <p className="text-lg font-bold font-mono">{lastForce[k].toFixed(4)}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-[hsl(var(--muted-foreground))]">No force data</p>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-export function ComparePage() {
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<'forces' | 'residuals' | 'config'>('forces');
-
-  const { data: compareData, isLoading } = useQuery({
-    queryKey: ['compare', selectedIds],
-    queryFn: async () => {
-      const res = await api.get<CompareData[]>(`/jobs/compare/data?ids=${selectedIds.join(',')}`);
-      return res.data;
-    },
-    enabled: selectedIds.length >= 2,
-  });
-
-  const handleAdd = (id: string) => setSelectedIds((prev) => [...prev, id]);
-  const handleRemove = (id: string) => setSelectedIds((prev) => prev.filter((x) => x !== id));
-
-  const tabs = [
-    { key: 'forces' as const, label: 'Forces', icon: BarChart3 },
-    { key: 'residuals' as const, label: 'Residuals', icon: TrendingDown },
-    { key: 'config' as const, label: 'Config Diff', icon: GitCompareArrows },
-  ];
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Compare Simulations</h1>
-        <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
-          Select 2-6 completed jobs to compare side-by-side
-        </p>
+          </Select>
+        )}
       </div>
 
-      <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-5">
-        <JobSelector selectedIds={selectedIds} onAdd={handleAdd} onRemove={handleRemove} />
-      </div>
-
-      {selectedIds.length < 2 && (
-        <div className="rounded-xl border-2 border-dashed border-[hsl(var(--border))] bg-[hsl(var(--card))]">
-          <div className="flex flex-col items-center justify-center py-16">
-            <div className="rounded-2xl bg-[hsl(var(--primary)/0.1)] p-5 mb-4">
-              <GitCompareArrows className="h-10 w-10 text-[hsl(var(--primary))]" />
-            </div>
-            <p className="text-lg font-semibold">Select at least 2 jobs</p>
-            <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
-              Choose completed simulations from the dropdown above
-            </p>
-          </div>
-        </div>
-      )}
-
-      {selectedIds.length >= 2 && (
+      {ids.length < 2 ? (
+        <EmptyState
+          title="Pick at least two runs"
+          detail="Verdicts, force curves, residuals, and setup differences line up side by side."
+        />
+      ) : compare.isLoading ? (
+        <Loading label="Loading comparison" />
+      ) : entries.length < 2 ? (
+        <EmptyState title="Not enough accessible runs" detail="You can only compare runs you own or that are shared with your team." />
+      ) : (
         <>
-          {isLoading ? (
-            <div className="flex items-center justify-center py-16">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-[hsl(var(--primary))] border-t-transparent" />
-            </div>
-          ) : compareData && compareData.length >= 2 ? (
-            <>
-              <FinalValuesSummary data={compareData} />
+          {/* Verdict table */}
+          <div className="mb-6 overflow-x-auto border border-seam bg-paper">
+            <table className="w-full min-w-[560px] text-sm">
+              <thead>
+                <tr className="font-condensed border-b border-seam text-left text-[11px] tracking-[0.12em] text-ink-3 uppercase">
+                  <th className="px-4 py-2 font-bold">Run</th>
+                  <th className="px-4 py-2 text-right font-bold">Cd</th>
+                  <th className="px-4 py-2 text-right font-bold">Cl</th>
+                  <th className="px-4 py-2 text-right font-bold">Cm</th>
+                  <th className="px-4 py-2 text-right font-bold">Drag</th>
+                  <th className="px-4 py-2 text-right font-bold">Downforce</th>
+                </tr>
+              </thead>
+              <tbody>
+                {entries.map((e) => {
+                  const s = plateauStats(e.forces);
+                  return (
+                    <tr key={e.job.id} className="border-b border-seam last:border-0">
+                      <td className="px-4 py-2.5">
+                        <span className="flex items-center gap-2">
+                          <span className="h-5 w-2" style={{ background: colorOf(e.job.id) }} aria-hidden />
+                          <Link to={`/runs/${e.job.id}`} className="font-medium hover:text-race-deep hover:underline">
+                            {e.job.name}
+                          </Link>
+                        </span>
+                      </td>
+                      <td className="font-mono tnum px-4 py-2.5 text-right font-semibold">{formatCoeff(s?.cd)}</td>
+                      <td className="font-mono tnum px-4 py-2.5 text-right font-semibold">{formatCoeff(s?.cl, true)}</td>
+                      <td className="font-mono tnum px-4 py-2.5 text-right">{formatCoeff(s?.cm, true)}</td>
+                      <td className="font-mono tnum px-4 py-2.5 text-right">{formatForce(s?.dragN)}</td>
+                      <td className="font-mono tnum px-4 py-2.5 text-right">
+                        {s ? formatForce(-s.liftN) : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
 
-              <div className="flex gap-1 rounded-lg bg-[hsl(var(--muted))] p-1 w-fit">
-                {tabs.map((tab) => (
-                  <button
-                    key={tab.key}
-                    onClick={() => setActiveTab(tab.key)}
-                    className={cn(
-                      'flex items-center gap-1.5 rounded-md px-4 py-1.5 text-xs font-medium transition-all',
-                      activeTab === tab.key
-                        ? 'bg-[hsl(var(--card))] text-[hsl(var(--foreground))] shadow-sm'
-                        : 'text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]'
-                    )}
-                  >
-                    <tab.icon className="h-3.5 w-3.5" />
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6">
-                {activeTab === 'forces' && <ForceComparisonChart data={compareData} />}
-                {activeTab === 'residuals' && <ResidualComparisonChart data={compareData} />}
-                {activeTab === 'config' && <ConfigComparison data={compareData} />}
-              </div>
-            </>
-          ) : (
-            <div className="text-center py-8 text-sm text-[hsl(var(--muted-foreground))]">
-              Could not load comparison data. Make sure the selected jobs are accessible to you.
-            </div>
-          )}
+          <Tabs
+            value={tab}
+            onChange={setTab}
+            items={[
+              { value: 'forces', label: 'Force history' },
+              { value: 'residuals', label: 'Residuals' },
+              { value: 'config', label: 'Setup diff' },
+            ]}
+          />
+          <div className="mt-4">
+            {tab === 'forces' && (
+              <Plate
+                caption={`Fig. — ${metric.toUpperCase()} vs iteration`}
+                actions={
+                  <div className="flex gap-1">
+                    {(['cd', 'cl', 'cm'] as const).map((m) => (
+                      <button
+                        key={m}
+                        onClick={() => setMetric(m)}
+                        className={`font-condensed cursor-pointer rounded-[3px] px-2 py-0.5 text-[11px] font-bold tracking-[0.08em] uppercase ${
+                          metric === m ? 'bg-ink text-white' : 'text-ink-3 hover:text-ink'
+                        }`}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                }
+              >
+                <OverlayChart data={forceSeries} entries={entries} colorOf={colorOf} />
+              </Plate>
+            )}
+            {tab === 'residuals' && (
+              <Plate caption="Fig. — Continuity residual (log scale)">
+                <OverlayChart data={residualSeries} entries={entries} colorOf={colorOf} log />
+              </Plate>
+            )}
+            {tab === 'config' && <ConfigDiff entries={entries} colorOf={colorOf} />}
+          </div>
         </>
       )}
     </div>
   );
+}
+
+/** Build rows {iteration, [jobId]: value} for an overlay chart. */
+function mergeByIteration(
+  entries: CompareEntry[],
+  pick: (e: CompareEntry) => ReadonlyArray<object>,
+  key: string,
+): Array<Record<string, number>> {
+  const byIter = new Map<number, Record<string, number>>();
+  for (const e of entries) {
+    for (const raw of pick(e)) {
+      const p = raw as Record<string, number>;
+      const it = p.iteration;
+      const row = byIter.get(it) ?? { iteration: it };
+      row[e.job.id] = p[key];
+      byIter.set(it, row);
+    }
+  }
+  return [...byIter.values()].sort((a, b) => a.iteration - b.iteration);
+}
+
+function OverlayChart({
+  data,
+  entries,
+  colorOf,
+  log = false,
+}: {
+  data: Array<Record<string, number>>;
+  entries: CompareEntry[];
+  colorOf: (id: string) => string;
+  log?: boolean;
+}) {
+  if (!data.length) return <p className="py-10 text-center text-sm text-ink-3">No data for these runs.</p>;
+  return (
+    <ResponsiveContainer width="100%" height={340}>
+      <LineChart data={data} margin={{ top: 8, right: 12, bottom: 4, left: 4 }}>
+        <CartesianGrid stroke="#e7e7e0" vertical={false} />
+        <XAxis dataKey="iteration" tick={AXIS} tickLine={false} axisLine={{ stroke: '#e7e7e0' }} />
+        <YAxis
+          scale={log ? 'log' : 'auto'}
+          domain={log ? ['auto', 'auto'] : undefined}
+          tick={AXIS}
+          tickFormatter={(v) => (log ? `1e${Math.round(Math.log10(v))}` : typeof v === 'number' ? v.toFixed(2) : String(v))}
+          tickLine={false}
+          axisLine={false}
+          width={52}
+        />
+        <Tooltip
+          formatter={(v, name) => [
+            typeof v === 'number' ? (log ? v.toExponential(2) : v.toFixed(4)) : String(v),
+            entries.find((e) => e.job.id === name)?.job.name ?? String(name),
+          ]}
+          labelFormatter={(l) => `iteration ${l}`}
+          contentStyle={{ border: '1px solid #dcdcd4', borderRadius: 3, fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }}
+        />
+        <Legend
+          formatter={(value) => entries.find((e) => e.job.id === value)?.job.name ?? value}
+          wrapperStyle={{ fontSize: 11, fontFamily: 'Archivo, sans-serif' }}
+        />
+        {entries.map((e) => (
+          <Line
+            key={e.job.id}
+            dataKey={e.job.id}
+            stroke={colorOf(e.job.id)}
+            dot={false}
+            strokeWidth={1.75}
+            isAnimationActive={false}
+            connectNulls
+          />
+        ))}
+      </LineChart>
+    </ResponsiveContainer>
+  );
+}
+
+/** Flatten configs and show only rows where runs differ. */
+function ConfigDiff({ entries, colorOf }: { entries: CompareEntry[]; colorOf: (id: string) => string }) {
+  const flats = entries.map((e) => flatten((e.job.config ?? {}) as Record<string, unknown>));
+  const keys = [...new Set(flats.flatMap((f) => Object.keys(f)))].sort();
+  const differing = keys.filter((k) => {
+    const vals = flats.map((f) => JSON.stringify(f[k]));
+    return new Set(vals).size > 1;
+  });
+  if (!differing.length)
+    return <p className="py-8 text-center text-sm text-ink-3">These runs share an identical setup.</p>;
+  return (
+    <div className="overflow-x-auto border border-seam bg-paper">
+      <table className="w-full min-w-[560px] text-sm">
+        <thead>
+          <tr className="font-condensed border-b border-seam text-left text-[11px] tracking-[0.12em] text-ink-3 uppercase">
+            <th className="px-4 py-2 font-bold">Setting</th>
+            {entries.map((e) => (
+              <th key={e.job.id} className="px-4 py-2 font-bold">
+                <span className="flex items-center gap-1.5 normal-case">
+                  <span className="h-3 w-1.5" style={{ background: colorOf(e.job.id) }} aria-hidden />
+                  {e.job.name}
+                </span>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {differing.map((k) => (
+            <tr key={k} className="border-b border-seam last:border-0">
+              <td className="font-mono px-4 py-2 text-[12px] text-ink-2">{k}</td>
+              {flats.map((f, i) => (
+                <td key={i} className="font-mono tnum px-4 py-2 text-[12px] font-semibold">
+                  {f[k] === undefined ? '—' : String(f[k])}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function flatten(obj: Record<string, unknown>, prefix = ''): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    const key = prefix ? `${prefix}.${k}` : k;
+    if (v && typeof v === 'object' && !Array.isArray(v)) Object.assign(out, flatten(v as Record<string, unknown>, key));
+    else if (Array.isArray(v)) out[key] = JSON.stringify(v);
+    else out[key] = v;
+  }
+  return out;
 }

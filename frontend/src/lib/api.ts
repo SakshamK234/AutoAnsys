@@ -9,7 +9,6 @@ const api = axios.create({
   baseURL: '/api',
 });
 
-// Request interceptor: attach JWT access token
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
@@ -41,8 +40,7 @@ function clearAuthAndRedirect() {
 }
 
 // Endpoints that must never trigger the refresh/redirect flow —
-// a 401 from these is a legitimate credential error that the caller
-// needs to see (e.g. "Invalid email or password" on the login form).
+// a 401 from these is a legitimate credential error the caller shows.
 const AUTH_BYPASS_PATHS = ['/auth/login', '/auth/register', '/auth/guest', '/auth/refresh'];
 
 function isAuthBypass(url: string | undefined): boolean {
@@ -50,13 +48,11 @@ function isAuthBypass(url: string | undefined): boolean {
   return AUTH_BYPASS_PATHS.some((p) => url.endsWith(p));
 }
 
-// Response interceptor: attempt silent refresh on 401
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const original = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
-    // Never intercept auth-endpoint failures — propagate so the form can show them.
     if (isAuthBypass(original?.url)) {
       return Promise.reject(error);
     }
@@ -66,7 +62,6 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // If another request is already refreshing, queue this one
     if (isRefreshing) {
       return new Promise<string>((resolve, reject) => {
         failedQueue.push({ resolve, reject });
@@ -106,3 +101,19 @@ api.interceptors.response.use(
 );
 
 export default api;
+
+/** Render any FastAPI error detail (string | validation array) as a sentence. */
+export function errorText(err: unknown, fallback = 'Something went wrong'): string {
+  const detail = (err as AxiosError<{ detail?: unknown }>)?.response?.data?.detail;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((d) => {
+        const loc = Array.isArray(d?.loc) ? d.loc.filter((x: unknown) => x !== 'body').join('.') : '';
+        return loc ? `${loc}: ${d?.msg ?? 'invalid'}` : String(d?.msg ?? 'invalid');
+      })
+      .join(' · ');
+  }
+  const msg = (err as Error)?.message;
+  return typeof msg === 'string' && msg ? msg : fallback;
+}

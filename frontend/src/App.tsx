@@ -1,60 +1,44 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useEffect } from 'react';
-import { initTheme } from '@/lib/theme';
-import { useAuthStore } from '@/stores/auth-store';
-import { AppLayout } from '@/components/layout/app-layout';
-import { LoginPage } from '@/pages/login';
-import { DashboardPage } from '@/pages/dashboard';
-import { NewJobPage } from '@/pages/new-job';
-import { JobsPage } from '@/pages/jobs';
-import { JobDetailPage } from '@/pages/job-detail';
-import { GeometriesPage } from '@/pages/geometries';
-import { TemplatesPage } from '@/pages/templates';
-import { TemplateDetailPage } from '@/pages/template-detail';
-import { ComparePage } from '@/pages/compare';
-import { SweepPage } from '@/pages/sweep';
-import { MeshesPage } from '@/pages/meshes';
-import { MeshDetailPage } from '@/pages/mesh-detail';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import type { ReactNode } from 'react';
+import { Shell } from './components/chrome';
+import { useAuth } from './stores/auth';
+import LoginPage from './pages/login';
+import DashboardPage from './pages/dashboard';
+import RunsPage from './pages/runs';
+import RunDetailPage from './pages/run-detail';
+import NewRunPage from './pages/new-run';
+import MeshesPage from './pages/meshes';
+import MeshDetailPage from './pages/mesh-detail';
+import GeometriesPage from './pages/geometries';
+import SweepPage from './pages/sweep';
+import ComparePage from './pages/compare';
+import TemplatesPage from './pages/templates';
+import GroupsPage from './pages/groups';
+import NotFoundPage from './pages/not-found';
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: { retry: 1, refetchOnWindowFocus: false },
-  },
-});
-
-function AppInit({ children }: { children: React.ReactNode }) {
-  const hydrate = useAuthStore((s) => s.hydrate);
-  useEffect(() => {
-    hydrate();
-    initTheme();
-  }, [hydrate]);
-  return <>{children}</>;
+function Protected({ children }: { children: ReactNode }) {
+  const authed = useAuth((s) => s.isAuthenticated);
+  const location = useLocation();
+  if (!authed) return <Navigate to="/login" state={{ from: location }} replace />;
+  return <Shell>{children}</Shell>;
 }
 
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <AppInit>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route element={<AppLayout />}>
-              <Route path="/" element={<DashboardPage />} />
-              <Route path="/new-job" element={<NewJobPage />} />
-              <Route path="/jobs" element={<JobsPage />} />
-              <Route path="/jobs/:id" element={<JobDetailPage />} />
-              <Route path="/geometries" element={<GeometriesPage />} />
-              <Route path="/templates" element={<TemplatesPage />} />
-              <Route path="/templates/:id" element={<TemplateDetailPage />} />
-              <Route path="/compare" element={<ComparePage />} />
-              <Route path="/sweep" element={<SweepPage />} />
-              <Route path="/meshes" element={<MeshesPage />} />
-              <Route path="/meshes/:id" element={<MeshDetailPage />} />
-            </Route>
-          </Routes>
-        </AppInit>
-      </BrowserRouter>
-    </QueryClientProvider>
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/" element={<Protected><DashboardPage /></Protected>} />
+      <Route path="/runs" element={<Protected><RunsPage /></Protected>} />
+      <Route path="/runs/new" element={<Protected><NewRunPage /></Protected>} />
+      <Route path="/runs/:id" element={<Protected><RunDetailPage /></Protected>} />
+      <Route path="/meshes" element={<Protected><MeshesPage /></Protected>} />
+      <Route path="/meshes/:id" element={<Protected><MeshDetailPage /></Protected>} />
+      <Route path="/geometries" element={<Protected><GeometriesPage /></Protected>} />
+      <Route path="/sweep" element={<Protected><SweepPage /></Protected>} />
+      <Route path="/compare" element={<Protected><ComparePage /></Protected>} />
+      <Route path="/templates" element={<Protected><TemplatesPage /></Protected>} />
+      <Route path="/groups" element={<Protected><GroupsPage /></Protected>} />
+      <Route path="*" element={<Protected><NotFoundPage /></Protected>} />
+    </Routes>
   );
 }

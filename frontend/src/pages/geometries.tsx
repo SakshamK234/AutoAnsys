@@ -1,240 +1,110 @@
 import { useState } from 'react';
-import { Upload, Box, ArrowUpFromLine, Download, Trash2, X } from 'lucide-react';
-import { useGeometries, useUploadGeometry, useDeleteGeometry, useDownloadGeometry } from '@/hooks/use-geometries';
-import { formatFileSize, formatDate } from '@/lib/utils';
+import type { FormEvent } from 'react';
+import { Download, Plus, UploadCloud } from 'lucide-react';
+import { geometryDownloadUrl, useGeometries, useGeometryMutations } from '../lib/queries';
+import { errorText } from '../lib/api';
+import { useAuth, isGuest } from '../stores/auth';
+import { PageHeader } from '../components/chrome';
+import { Button, ConfirmButton, Dialog, EmptyState, Field, Input, Loading, useToast } from '../components/ui';
+import { formatAgo, formatBytes } from '../lib/format';
 
-function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const upload = useUploadGeometry();
+export default function GeometriesPage() {
+  const geometries = useGeometries();
+  const { upload, remove } = useGeometryMutations();
+  const toast = useToast();
+  const { user } = useAuth();
+  const guest = isGuest(user);
+  const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [componentName, setComponentName] = useState('');
   const [description, setDescription] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
-  if (!open) return null;
-
-  const handleSubmit = (e: React.FormEvent) => {
+  async function onUpload(e: FormEvent) {
     e.preventDefault();
     if (!file) return;
-    const formData = new FormData();
-    formData.append('file', file);
-    if (componentName.trim()) formData.append('component_name', componentName.trim());
-    if (description.trim()) formData.append('description', description.trim());
-    upload.mutate(formData, {
-      onSuccess: () => {
-        setFile(null);
-        setComponentName('');
-        setDescription('');
-        onClose();
-      },
-    });
-  };
+    setError(null);
+    try {
+      await upload.mutateAsync({
+        file,
+        component_name: componentName || undefined,
+        description: description || undefined,
+      });
+      toast('ok', 'Geometry uploaded');
+      setOpen(false);
+      setFile(null);
+      setComponentName('');
+      setDescription('');
+    } catch (err) {
+      setError(errorText(err, 'Upload failed'));
+    }
+  }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-md rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6 shadow-xl">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold">Upload Geometry</h3>
-          <button onClick={onClose} className="rounded-lg p-1 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--accent))]">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+    <div className="settle">
+      <PageHeader
+        title="Geometries"
+        sub="CAD exports — Parasolid (.x_t) per the SOP; STEP/IGES accepted."
+        actions={
+          !guest && (
+            <Button variant="primary" onClick={() => setOpen(true)}>
+              <Plus size={14} strokeWidth={3} /> Upload
+            </Button>
+          )
+        }
+      />
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">CAD File</label>
-            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-[hsl(var(--border))] p-6 transition-colors hover:border-[hsl(var(--primary)/0.4)]">
-              <div className="text-center">
-                <ArrowUpFromLine className="mx-auto h-6 w-6 text-[hsl(var(--muted-foreground))] mb-2" />
-                <p className="text-sm font-medium">{file ? file.name : 'Choose a file'}</p>
-                <p className="text-xs text-[hsl(var(--muted-foreground))]">.stp, .step, .igs, .iges, .x_t, .x_b, .xmt_txt, .xmt_bin, .dsco</p>
-              </div>
-              <input
-                type="file"
-                accept=".stp,.step,.igs,.iges,.x_t,.x_b,.xmt_txt,.xmt_bin,.dsco"
-                className="hidden"
-                onChange={(e) => setFile(e.target.files?.[0] || null)}
-              />
-            </label>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Component Name (optional)</label>
-            <input
-              type="text"
-              value={componentName}
-              onChange={(e) => setComponentName(e.target.value)}
-              placeholder="e.g., Front Wing v3"
-              className="w-full rounded-lg border border-[hsl(var(--input))] bg-[hsl(var(--background))] px-3 py-2 text-sm"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Description (optional)</label>
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Short description..."
-              className="w-full rounded-lg border border-[hsl(var(--input))] bg-[hsl(var(--background))] px-3 py-2 text-sm"
-            />
-          </div>
-
-          {upload.isError && (() => {
-            const err = upload.error as { response?: { status?: number; data?: { detail?: unknown } }; message?: string } | null;
-            const status = err?.response?.status;
-            const rawDetail = err?.response?.data?.detail;
-            // FastAPI 422 returns detail as an array of { loc, msg, type, ... }.
-            // Flatten to a readable string so React doesn't crash on objects.
-            let message: string;
-            if (typeof rawDetail === 'string') {
-              message = rawDetail;
-            } else if (Array.isArray(rawDetail)) {
-              message = rawDetail
-                .map((d: any) => d?.msg ? `${(d.loc || []).slice(1).join('.')}: ${d.msg}` : JSON.stringify(d))
-                .join('; ');
-            } else if (rawDetail && typeof rawDetail === 'object') {
-              message = JSON.stringify(rawDetail);
-            } else {
-              message = err?.message || 'Upload failed.';
-            }
-            return (
-              <div className="rounded-lg bg-rose-500/10 border border-rose-500/20 p-3 text-sm text-rose-500">
-                {status ? `${status}: ` : ''}{message}
-              </div>
-            );
-          })()}
-
-          <div className="flex gap-2 justify-end">
-            <button type="button" onClick={onClose} className="rounded-lg border border-[hsl(var(--border))] px-4 py-2 text-sm font-medium hover:bg-[hsl(var(--accent))] transition-colors">
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={!file || upload.isPending}
-              className="rounded-lg bg-[hsl(var(--primary))] px-4 py-2 text-sm font-semibold text-[hsl(var(--primary-foreground))] hover:brightness-110 disabled:opacity-50 transition-all"
-            >
-              {upload.isPending ? 'Uploading...' : 'Upload'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-export function GeometriesPage() {
-  const { data, isLoading } = useGeometries();
-  const deleteGeo = useDeleteGeometry();
-  const downloadGeo = useDownloadGeometry();
-  const [uploadOpen, setUploadOpen] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-
-  const geometries = data?.items ?? [];
-
-  const handleDelete = (id: string) => {
-    deleteGeo.mutate(id, { onSuccess: () => setDeleteConfirm(null) });
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Geometry Library</h1>
-          <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
-            Manage your CAD geometry files
-          </p>
-        </div>
-        <button
-          onClick={() => setUploadOpen(true)}
-          className="flex items-center gap-2 rounded-lg bg-[hsl(var(--primary))] px-4 py-2.5 text-sm font-semibold text-[hsl(var(--primary-foreground))] hover:brightness-110 active:brightness-95 transition-all"
-        >
-          <Upload className="h-4 w-4" />
-          Upload Geometry
-        </button>
-      </div>
-
-      {isLoading ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-[hsl(var(--primary))] border-t-transparent" />
-        </div>
-      ) : geometries.length === 0 ? (
-        <div className="rounded-xl border-2 border-dashed border-[hsl(var(--border))] bg-[hsl(var(--card))] transition-colors hover:border-[hsl(var(--primary)/0.4)]">
-          <div className="flex flex-col items-center justify-center py-20">
-            <div className="rounded-2xl bg-[hsl(var(--primary)/0.1)] p-5 mb-5">
-              <Box className="h-10 w-10 text-[hsl(var(--primary))]" />
-            </div>
-            <p className="text-lg font-semibold">No geometries uploaded yet</p>
-            <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1 max-w-xs text-center">
-              Upload STEP, IGES, Parasolid (.x_t/.x_b), or Discovery (.dsco) files — the SOPs recommend Parasolid
-            </p>
-            <button
-              onClick={() => setUploadOpen(true)}
-              className="mt-6 flex items-center gap-2 rounded-lg border border-[hsl(var(--input))] px-4 py-2 text-sm font-medium hover:bg-[hsl(var(--accent))] transition-colors"
-            >
-              <ArrowUpFromLine className="h-4 w-4" />
-              Upload your first geometry
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))]">
+      {geometries.isLoading ? (
+        <Loading label="Loading geometries" />
+      ) : geometries.data?.items.length ? (
+        <div className="border border-seam bg-paper">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-[hsl(var(--border))]">
-                <th className="px-5 py-3 text-left text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">File</th>
-                <th className="px-5 py-3 text-left text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">Component</th>
-                <th className="px-5 py-3 text-left text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">Size</th>
-                <th className="px-5 py-3 text-left text-[10px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide">Uploaded</th>
-                <th className="px-5 py-3 w-24" />
+              <tr className="font-condensed border-b border-seam text-left text-[11px] tracking-[0.12em] text-ink-3 uppercase">
+                <th className="px-4 py-2 font-bold">Part</th>
+                <th className="hidden px-4 py-2 font-bold sm:table-cell">File</th>
+                <th className="px-4 py-2 text-right font-bold">Size</th>
+                <th className="hidden px-4 py-2 text-right font-bold sm:table-cell">Uploaded</th>
+                <th className="w-28 px-4 py-2" />
               </tr>
             </thead>
             <tbody>
-              {geometries.map((g) => (
-                <tr key={g.id} className="border-b border-[hsl(var(--border))] last:border-0 transition-colors hover:bg-[hsl(var(--muted))]">
-                  <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-3">
-                      <div className="rounded-lg bg-[hsl(var(--primary)/0.1)] p-1.5">
-                        <Box className="h-3.5 w-3.5 text-[hsl(var(--primary))]" />
-                      </div>
-                      <span className="font-medium truncate max-w-[200px]">{g.original_name}</span>
-                    </div>
+              {geometries.data.items.map((g) => (
+                <tr key={g.id} className="border-b border-seam last:border-0 hover:bg-ground/60">
+                  <td className="px-4 py-2.5">
+                    <p className="font-semibold">{g.component_name || g.original_name}</p>
+                    {g.description && <p className="text-xs text-ink-3">{g.description}</p>}
                   </td>
-                  <td className="px-5 py-3.5 text-[hsl(var(--muted-foreground))]">{g.component_name || '—'}</td>
-                  <td className="px-5 py-3.5 text-[hsl(var(--muted-foreground))] font-mono text-xs">{formatFileSize(g.file_size)}</td>
-                  <td className="px-5 py-3.5 text-[hsl(var(--muted-foreground))]">{formatDate(g.created_at)}</td>
-                  <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-1">
+                  <td className="font-mono hidden px-4 py-2.5 text-[13px] text-ink-2 sm:table-cell">
+                    {g.original_name}
+                  </td>
+                  <td className="font-mono tnum px-4 py-2.5 text-right text-[13px]">{formatBytes(g.file_size)}</td>
+                  <td className="hidden px-4 py-2.5 text-right text-ink-3 sm:table-cell">{formatAgo(g.created_at)}</td>
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center justify-end gap-1">
                       <button
-                        onClick={() => downloadGeo.mutate(g.id)}
-                        disabled={downloadGeo.isPending}
-                        className="rounded-lg p-1.5 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))] transition-colors"
-                        title="Download"
+                        aria-label={`Download ${g.original_name}`}
+                        className="cursor-pointer p-1.5 text-ink-3 hover:text-race"
+                        onClick={() =>
+                          geometryDownloadUrl(g.id)
+                            .then((url) => window.open(url, '_blank', 'noopener'))
+                            .catch((e) => toast('error', errorText(e, 'Download failed')))
+                        }
                       >
-                        <Download className="h-3.5 w-3.5" />
+                        <Download size={15} />
                       </button>
-                      {deleteConfirm === g.id ? (
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => handleDelete(g.id)}
-                            disabled={deleteGeo.isPending}
-                            className="rounded-lg px-2 py-1 text-[10px] font-medium bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 transition-colors"
-                          >
-                            {deleteGeo.isPending ? '...' : 'Delete'}
-                          </button>
-                          <button
-                            onClick={() => setDeleteConfirm(null)}
-                            className="rounded-lg px-2 py-1 text-[10px] font-medium text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--accent))]"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => setDeleteConfirm(g.id)}
-                          className="rounded-lg p-1.5 text-[hsl(var(--muted-foreground))] hover:bg-rose-500/10 hover:text-rose-500 transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                      {!guest && g.user_id === user?.id && (
+                        <ConfirmButton
+                          label="Delete"
+                          variant="ghost"
+                          busy={remove.isPending}
+                          onConfirm={() =>
+                            remove
+                              .mutateAsync(g.id)
+                              .then(() => toast('ok', 'Geometry deleted'))
+                              .catch((e) => toast('error', errorText(e)))
+                          }
+                        />
                       )}
                     </div>
                   </td>
@@ -243,9 +113,57 @@ export function GeometriesPage() {
             </tbody>
           </table>
         </div>
+      ) : (
+        <EmptyState
+          title="No geometries"
+          detail="Export your part from NX or Discovery as Parasolid and upload it here to start a run."
+          action={
+            !guest && (
+              <Button variant="primary" onClick={() => setOpen(true)}>
+                Upload a part
+              </Button>
+            )
+          }
+        />
       )}
 
-      <UploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} />
+      <Dialog open={open} onClose={() => setOpen(false)} title="Upload geometry">
+        <form onSubmit={onUpload} className="flex flex-col gap-4">
+          <label
+            className="flex cursor-pointer flex-col items-center gap-2 border border-dashed border-seam-strong px-4 py-8 text-center hover:border-race"
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              const f = e.dataTransfer.files?.[0];
+              if (f) setFile(f);
+            }}
+          >
+            <UploadCloud size={22} className="text-ink-3" />
+            <span className="text-sm font-medium">{file ? file.name : 'Drop a file or click to browse'}</span>
+            <span className="text-xs text-ink-3">.x_t · .x_b · .stp · .step · .igs · .iges</span>
+            <input
+              type="file"
+              accept=".x_t,.x_b,.xmt_txt,.xmt_bin,.stp,.step,.igs,.iges,.dsco"
+              className="hidden"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            />
+          </label>
+          <Field label="Part name">
+            <Input value={componentName} onChange={(e) => setComponentName(e.target.value)} placeholder="e.g. Rear wing v1.5" />
+          </Field>
+          <Field label="Notes">
+            <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="optional" />
+          </Field>
+          {error && (
+            <p role="alert" className="border border-crit/40 bg-crit-tint px-3 py-2 text-sm text-crit">
+              {error}
+            </p>
+          )}
+          <Button type="submit" variant="primary" busy={upload.isPending} disabled={!file}>
+            Upload
+          </Button>
+        </form>
+      </Dialog>
     </div>
   );
 }

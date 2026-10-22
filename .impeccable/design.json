@@ -1,0 +1,169 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-21T00:00:00Z",
+  "title": "Design System: AutoAnsys",
+  "extensions": {
+    "colorMeta": {
+      "race": { "role": "primary", "displayName": "Racing Blue", "canonical": "#1d43d8", "tonalRamp": ["#0a1430", "#0e2060", "#1634ab", "#1d43d8", "#4a6ae2", "#8299ec", "#b9c6f4", "#e8edfc"] },
+      "ink": { "role": "neutral", "displayName": "Ink", "canonical": "#14161b", "tonalRamp": ["#14161b", "#2e323b", "#4a4e58", "#6b6f78", "#8e929a", "#b1b4ba", "#d4d6da", "#f1f2f4"] },
+      "ground": { "role": "neutral", "displayName": "Technical White Ground", "canonical": "#f7f7f4", "tonalRamp": ["#2a2a26", "#4a4a44", "#6b6b63", "#8d8d84", "#b9b9b0", "#dcdcd4", "#f7f7f4", "#fffffe"] },
+      "seam": { "role": "neutral", "displayName": "Seam Hairline", "canonical": "#dcdcd4" },
+      "seam-strong": { "role": "neutral", "displayName": "Strong Seam", "canonical": "#b9b9b0" },
+      "paper": { "role": "neutral", "displayName": "Paper", "canonical": "#fffffe" },
+      "ink-2": { "role": "neutral", "displayName": "Ink 2 (secondary text)", "canonical": "#4a4e58" },
+      "ink-3": { "role": "neutral", "displayName": "Ink 3 (tertiary text, ≥4.5:1 on paper)", "canonical": "#6b6f78" },
+      "race-deep": { "role": "primary", "displayName": "Race Deep (hover / on-tint text)", "canonical": "#1634ab" },
+      "race-ink": { "role": "primary", "displayName": "Race Ink", "canonical": "#0e2060" },
+      "race-tint": { "role": "primary", "displayName": "Race Tint", "canonical": "#e8edfc" },
+      "race-text": { "role": "primary", "displayName": "Rail Muted Text", "canonical": "#b9c6f4" },
+      "ok": { "role": "tertiary", "displayName": "OK Green", "canonical": "#097a49", "tonalRamp": ["#032417", "#054a2c", "#097a49", "#1d9a63", "#4bb787", "#86d1ad", "#bce6d2", "#e3f3ea"] },
+      "warn": { "role": "tertiary", "displayName": "Warn Amber", "canonical": "#b54708", "tonalRamp": ["#2f1202", "#5e2404", "#8a3506", "#b54708", "#d9712f", "#eb9d66", "#f6c9a4", "#fdf0e3"] },
+      "crit": { "role": "tertiary", "displayName": "Crit Red", "canonical": "#d92d20", "tonalRamp": ["#3a0a07", "#73140e", "#a92017", "#d92d20", "#e85a4f", "#f18a82", "#f8bcb7", "#fdeae8"] },
+      "ok-tint": { "role": "tertiary", "displayName": "OK Tint", "canonical": "#e3f3ea" },
+      "warn-tint": { "role": "tertiary", "displayName": "Warn Tint", "canonical": "#fdf0e3" },
+      "crit-tint": { "role": "tertiary", "displayName": "Crit Tint", "canonical": "#fdeae8" },
+      "livery-1": { "role": "secondary", "displayName": "Livery 1 — Blue", "canonical": "#1d43d8" },
+      "livery-2": { "role": "secondary", "displayName": "Livery 2 — Red", "canonical": "#d92d20" },
+      "livery-3": { "role": "secondary", "displayName": "Livery 3 — Green", "canonical": "#0a8f6a" },
+      "livery-4": { "role": "secondary", "displayName": "Livery 4 — Gold", "canonical": "#e8a013" },
+      "livery-5": { "role": "secondary", "displayName": "Livery 5 — Violet", "canonical": "#7a2fd0" },
+      "livery-6": { "role": "secondary", "displayName": "Livery 6 — Cyan", "canonical": "#0e8fb8" },
+      "lightbox-black": { "role": "neutral", "displayName": "Lightbox Black", "canonical": "#0b0c0f" }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display (Saira)", "purpose": "Page titles (26px) and the rail wordmark (17px)." },
+      "headline": { "displayName": "Headline (Saira Condensed caps)", "purpose": "Dialog titles and emphasized section labels." },
+      "title": { "displayName": "Title / Control label", "purpose": "Buttons, tabs, section heads — condensed caps, 0.08–0.1em tracking." },
+      "body": { "displayName": "Body (Archivo)", "purpose": "All running UI text; 14px base on body." },
+      "label": { "displayName": "Microlabel", "purpose": "Field labels, plate captions, stat and timing-tower column heads; 10–11px, up to 0.16em tracking." },
+      "data": { "displayName": "Data numerals (JetBrains Mono)", "purpose": "Every comparable number, with tabular-nums (.tnum); 13px in tables up to 26px in stat tiles." }
+    },
+    "shadows": [],
+    "motion": [
+      { "name": "settle", "value": "settle 240ms cubic-bezier(0.16, 1, 0.3, 1) both", "purpose": "The single authored entrance: panels rise 4px and settle. Route/dialog mount only; disabled under prefers-reduced-motion." },
+      { "name": "live-pulse", "value": "live-pulse 1.6s ease-in-out infinite", "purpose": "Opacity pulse (1 → 0.35) on the dot of the running status chip." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one committed action per view region — racing blue, condensed caps.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">New run</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 16px; border: none; border-radius: 3px; font-family: 'Saira Condensed', sans-serif; font-weight: 700; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; transition: background-color 0.15s, border-color 0.15s, color 0.15s; } .ds-btn-primary { background: #1d43d8; color: #fff; } .ds-btn-primary:hover { background: #1634ab; } .ds-btn-primary:focus-visible { outline: 2px solid #1d43d8; outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "The default button: paper with a strong seam border.",
+      "html": "<button class=\"ds-btn ds-btn-secondary\">Download logs</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 16px; border-radius: 3px; font-family: 'Saira Condensed', sans-serif; font-weight: 700; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; transition: background-color 0.15s, border-color 0.15s; } .ds-btn-secondary { background: #fffffe; color: #14161b; border: 1px solid #b9b9b0; } .ds-btn-secondary:hover { border-color: #6b6f78; background: #f7f7f4; } .ds-btn-secondary:focus-visible { outline: 2px solid #1d43d8; outline-offset: 2px; }"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Destructive action — isolated with space, two-step confirm in product.",
+      "html": "<button class=\"ds-btn ds-btn-danger\">Cancel run</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; height: 36px; padding: 0 16px; border-radius: 3px; font-family: 'Saira Condensed', sans-serif; font-weight: 700; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; transition: background-color 0.15s; } .ds-btn-danger { background: #fffffe; color: #d92d20; border: 1px solid rgba(217, 45, 32, 0.4); } .ds-btn-danger:hover { background: #fdeae8; } .ds-btn-danger:focus-visible { outline: 2px solid #1d43d8; outline-offset: 2px; }"
+    },
+    {
+      "name": "Input Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "36px paper field with condensed-caps label; focus turns the border racing blue.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">Run name</span><input class=\"ds-input\" placeholder=\"FW-07 gurney sweep\" /></label>",
+      "css": ".ds-field { display: block; font-family: Archivo, sans-serif; } .ds-field-label { display: block; margin-bottom: 4px; font-family: 'Saira Condensed', sans-serif; font-weight: 700; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #4a4e58; } .ds-input { height: 36px; width: 100%; border: 1px solid #b9b9b0; border-radius: 3px; background: #fffffe; padding: 0 12px; font-size: 14px; color: #14161b; font-family: Archivo, sans-serif; } .ds-input::placeholder { color: #6b6f78; } .ds-input:hover { border-color: #6b6f78; } .ds-input:focus { border-color: #1d43d8; outline: none; }"
+    },
+    {
+      "name": "Status Chip — On track",
+      "kind": "chip",
+      "refersTo": "status-chip",
+      "description": "State chip: tint background, 30% state border, pulsing live dot while running.",
+      "html": "<span class=\"ds-chip\"><span class=\"ds-chip-dot\"></span>On track</span>",
+      "css": ".ds-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid rgba(29, 67, 216, 0.3); border-radius: 3px; background: #e8edfc; color: #1634ab; padding: 2px 8px; font-family: 'Saira Condensed', sans-serif; font-weight: 700; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; } .ds-chip-dot { width: 6px; height: 6px; border-radius: 9999px; background: #1d43d8; animation: ds-live 1.6s ease-in-out infinite; } @keyframes ds-live { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }"
+    },
+    {
+      "name": "Stamp — Failed",
+      "kind": "custom",
+      "description": "Angled rubber-stamp terminal verdict; nothing disappears, it cancels.",
+      "html": "<span class=\"ds-stamp\">Failed</span>",
+      "css": ".ds-stamp { display: inline-block; transform: rotate(-6deg); border: 2.5px solid currentColor; border-radius: 4px; padding: 2px 12px; color: #d92d20; font-family: 'Saira Condensed', sans-serif; font-weight: 700; font-size: 15px; letter-spacing: 0.22em; text-transform: uppercase; mask-image: url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='40'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.6' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.85 0.15'/%3E%3C/filter%3E%3Crect width='120' height='40' fill='white' filter='url(%23n)'/%3E%3C/svg%3E\"); mask-size: 120px 40px; -webkit-mask-image: url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='40'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.6' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.85 0.15'/%3E%3C/filter%3E%3Crect width='120' height='40' fill='white' filter='url(%23n)'/%3E%3C/svg%3E\"); -webkit-mask-size: 120px 40px; }"
+    },
+    {
+      "name": "Fig. Plate",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Bordered figure with condensed-caps caption — the only home for data color.",
+      "html": "<figure class=\"ds-plate\"><figcaption class=\"ds-plate-cap\">Fig. 1 — Drag coefficient history</figcaption><div class=\"ds-plate-body\">Chart area</div></figure>",
+      "css": ".ds-plate { margin: 0; border: 1px solid #dcdcd4; background: #fffffe; font-family: Archivo, sans-serif; } .ds-plate-cap { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #dcdcd4; padding: 8px 16px; font-family: 'Saira Condensed', sans-serif; font-weight: 700; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: #4a4e58; } .ds-plate-body { padding: 16px; min-height: 72px; color: #6b6f78; font-size: 13px; }"
+    },
+    {
+      "name": "Livery Run Identity",
+      "kind": "custom",
+      "description": "Three-band stripe (3:2:1) + roundel car number — a run's deterministic identity.",
+      "html": "<div class=\"ds-run\"><span class=\"ds-stripe\"><span class=\"ds-s1\"></span><span class=\"ds-s2\"></span><span class=\"ds-s3\"></span></span><span class=\"ds-roundel\">27</span><span class=\"ds-run-name\">FW-07 gurney sweep</span></div>",
+      "css": ".ds-run { display: flex; align-items: center; gap: 12px; height: 48px; border: 1px solid #dcdcd4; background: #fffffe; padding-right: 16px; font-family: Archivo, sans-serif; } .ds-stripe { display: flex; flex-direction: column; width: 14px; align-self: stretch; } .ds-s1 { flex: 3; background: #1d43d8; } .ds-s2 { flex: 2; background: #e8a013; } .ds-s3 { flex: 1; background: #0a8f6a; } .ds-roundel { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border: 2px solid #14161b; border-radius: 9999px; background: #fffffe; color: #14161b; font-family: 'Saira Condensed', sans-serif; font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums; } .ds-run-name { font-size: 14px; font-weight: 600; color: #14161b; }"
+    },
+    {
+      "name": "Rail Nav Item",
+      "kind": "nav",
+      "refersTo": "nav-item-active",
+      "description": "Nav entries on the racing-blue rail; active is a white pill with race-deep text.",
+      "html": "<nav class=\"ds-rail\"><a class=\"ds-nav ds-nav-active\" href=\"#\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.25\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"9\" rx=\"1\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"5\" rx=\"1\"/><rect x=\"14\" y=\"12\" width=\"7\" height=\"9\" rx=\"1\"/><rect x=\"3\" y=\"16\" width=\"7\" height=\"5\" rx=\"1\"/></svg>Season board</a><a class=\"ds-nav\" href=\"#\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.25\"><path d=\"M3 5h18M3 12h18M3 19h18\"/></svg>Runs</a></nav>",
+      "css": ".ds-rail { display: flex; flex-direction: column; gap: 2px; width: 208px; background: #1d43d8; padding: 12px 10px; } .ds-nav { display: flex; align-items: center; gap: 12px; border-radius: 3px; padding: 8px 12px; font-family: 'Saira Condensed', sans-serif; font-weight: 700; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; text-decoration: none; color: #b9c6f4; transition: background-color 0.15s, color 0.15s; } .ds-nav:hover { background: rgba(255, 255, 255, 0.1); color: #fff; } .ds-nav-active { background: #fff; color: #1634ab; } .ds-nav-active:hover { background: #fff; color: #1634ab; }"
+    },
+    {
+      "name": "Timing Tower Strip",
+      "kind": "custom",
+      "description": "The dashboard's seamed stat strip — heavy ink rules, condensed labels over mono numerals.",
+      "html": "<div class=\"ds-tower\"><div class=\"ds-tcol\"><span class=\"ds-tlabel\">Runs</span><span class=\"ds-tval\">128</span></div><div class=\"ds-tcol\"><span class=\"ds-tlabel\">On track</span><span class=\"ds-tval\" style=\"color:#1634ab\">3</span></div><div class=\"ds-tcol\"><span class=\"ds-tlabel\">Finished</span><span class=\"ds-tval\" style=\"color:#097a49\">97</span></div><div class=\"ds-tcol\"><span class=\"ds-tlabel\">Failed</span><span class=\"ds-tval\" style=\"color:#d92d20\">6</span></div></div>",
+      "css": ".ds-tower { display: flex; border-top: 2px solid #14161b; border-bottom: 2px solid #14161b; background: #fffffe; font-family: Archivo, sans-serif; } .ds-tcol { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 10px 16px; } .ds-tcol + .ds-tcol { border-left: 1px solid #dcdcd4; } .ds-tlabel { font-family: 'Saira Condensed', sans-serif; font-weight: 700; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: #6b6f78; } .ds-tval { font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; font-weight: 600; font-size: 20px; line-height: 1.3; color: #14161b; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Team Livery",
+    "overview": "AutoAnsys dresses CFD work in a race team's graphic system. The ground is technical white (#F7F7F4), the ink is near-black (#14161B), and exactly one committed color field exists in the chrome: the racing-blue nav rail. Every run is a numbered, striped entry in the team's season — a deterministic three-band livery stripe and a two-digit roundel car number derived from its id — so one design iteration is recognizable at a glance across lists, charts, and comparisons. The world explicitly refuses the category default: no graphite dashboard, no single teal accent, no shadowed cards.\n\nDensity is real-data density: tables and stat strips set in JetBrains Mono tabular numerals, condensed-caps labels, hairline seams instead of elevation. Color is disciplined — state hues (green/amber/red) carry meaning only, the six-hue livery palette carries identity only, and chrome stays ink on ground. Terminal states are declared, not hidden: a run that fails gets an angled rubber stamp, not a quiet gray badge.",
+    "keyCharacteristics": [
+      "One committed color field (the racing-blue rail); the rest of the chrome is ink on white",
+      "Deterministic run identity: livery stripe + roundel number, consistent across every surface",
+      "Hairline seams, zero drop shadows; depth by border weight and tone",
+      "JetBrains Mono tabular numerals for every data number",
+      "Data graphics live inside bordered \"Fig.\" plates with captions",
+      "Stamped terminal verdicts (Finished / Failed / Cancelled) at -6°",
+      "One authored entrance animation (`settle`), route-level only"
+    ],
+    "rules": [
+      { "name": "The One Field Rule", "body": "Racing blue is the only large color field in the chrome, and it belongs to the nav rail. Everywhere else, blue appears only as small committed accents (primary button, focus, active tab).", "section": "colors" },
+      { "name": "The Plate Rule", "body": "Color for data (charts, contours, series hues) lives inside bordered plates with \"Fig.\" captions. Chrome stays ink on ground.", "section": "colors" },
+      { "name": "The Identity-Is-Not-State Rule", "body": "Livery hues identify runs; state hues judge them. The two palettes share #1d43d8 and #d92d20 by value but never swap roles.", "section": "colors" },
+      { "name": "The Mono Numerals Rule", "body": "Any number a user might compare or scan down a column is set in JetBrains Mono with tabular figures. Archivo never carries data numerals.", "section": "typography" },
+      { "name": "The Condensed Caps Rule", "body": "Labels, buttons, and section heads are Saira Condensed 700 uppercase with wide tracking (0.08–0.16em). Archivo stays sentence-case.", "section": "typography" },
+      { "name": "The Seam Rule", "body": "Panels never float. If two regions need separating, draw a 1px seam; if a moment needs weight, thicken the rule to 2px ink — never add a shadow.", "section": "elevation" },
+      { "name": "The One Entrance Rule", "body": ".settle fires once per route or dialog mount, never scattered per-card.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do give every run-shaped entity its Stripe + Roundel from lib/livery.ts; identity must survive across lists, charts, and compare.",
+      "Do set every comparable numeral in JetBrains Mono with .tnum.",
+      "Do put any chart, contour, or color-bearing data graphic inside a Plate with a \"Fig.\" caption.",
+      "Do stamp terminal states on detail headers (Finished / Failed / Cancelled) and keep the failure's error_message readable beside it.",
+      "Do isolate Cancel/Delete with surrounding space and the two-step ConfirmButton.",
+      "Do keep labels in Saira Condensed 700 uppercase with 0.08–0.16em tracking, and section heads trailing their hairline to the edge."
+    ],
+    "donts": [
+      "Don't add drop shadows; separation is seams (1px #dcdcd4) or heavy ink rules (2px), never elevation.",
+      "Don't introduce a second large color field; racing blue's field is the rail, full stop.",
+      "Don't use livery hues for state or state hues for decoration; green, amber, and red appear only where they judge something.",
+      "Don't round beyond 3px on controls (4px on the stamp); panels and plates stay square.",
+      "Don't scatter entrance animations per card; .settle is route/dialog level only, and all motion collapses under prefers-reduced-motion.",
+      "Don't fall back to the category default — graphite dashboard, teal accent, shadowed cards — anywhere in this product."
+    ]
+  }
+}
