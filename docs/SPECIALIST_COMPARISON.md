@@ -56,6 +56,36 @@ the specialist is therefore a *systematic method difference*, not noise.
 - y+ check on the car from the result case; set
   `volume_mesh.first_layer_height_mm` if his wall treatment differs.
 
+## Isolation matrix (2026-10-22, follow-up runs)
+
+| Cell | Mesh | Solver setup | Drag (half) | Lift (half) |
+|---|---|---|---|---|
+| Specialist re-solve (6412967) | his | his | −155.7 N | −415.9 N |
+| **Run C** (8112402) | **his** | **ours** | **−154.7 N** | **−421.0 N** |
+| Pipeline (8105443) | ours (wrap) | ours | −208.6 N | −730.4 N |
+
+**Run C is decisive: his mesh under our solver numerics reproduces his
+numbers within ~1%.** The solver setup (coupled scheme, discretization,
+convergence discipline, reporting) is equivalent — the entire gap between
+the two tracks is the mesh: the 2 mm fault-tolerant wrap vs. his hand-built
+labelled mesh with 0.25 mm trailing-edge strips. (C hit its 10 h walltime at
+iteration 721 of 1000; the plateau was long established.)
+
+Two additional findings from failed isolation attempts:
+- `delete_bodies: driver_model.*` breaks the wrap — **the driver model seals
+  the cockpit** in the V0.4 export, so the geometry-content difference vs.
+  his mesh cannot be isolated from our side.
+- Aggressive local refinement (0.25 mm on wing+undertray) fused the symmetry
+  plane into the car shell — the wrap's centerline junctions are sensitive;
+  refinement experiments use rear-wing-only 0.5 mm and global 1 mm floors
+  (runs 8121592 / 8121593, pending).
+
+**Consequence:** the pipeline's accuracy ceiling is set by the wrap, which
+exists only because the team's current export strips named selections
+(CLUSTER_FINDINGS: the specialist's source had them). The definitive fix is
+a labelled re-export (+ closed cockpit) from CAD — that unlocks the
+watertight path and specialist-grade meshes through this same pipeline.
+
 ## Verdict
 
 The pipeline reproduces *itself* precisely and runs the specialist-matched
