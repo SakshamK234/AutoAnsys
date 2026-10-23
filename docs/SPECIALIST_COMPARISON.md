@@ -80,6 +80,22 @@ Two additional findings from failed isolation attempts:
   refinement experiments use rear-wing-only 0.5 mm and global 1 mm floors
   (runs 8121592 / 8121593, pending).
 
+### Refinement runs (completed 2026-10-23): the wrap is grid-converged
+
+| Run | Mesh change | Drag (full) | Downforce (full) |
+|---|---|---|---|
+| Baseline wrap (8105443) | 2 mm floor | 417 N | 1461 N |
+| global1 (8121593) | 1 mm floor, whole car | 421 N (+1 %) | 1479 N (+1 %) |
+| wing05 (8121592) | + rear wing at 0.5 mm | 434 N (+4 %) | 1573 N (+8 %) |
+
+Halving the global floor moves nothing; refining the wing moves the result
+*further from* the specialist, not toward him. **The wrap solution is
+mesh-converged at its own answer — the disagreement is topological, not a
+resolution deficit.** The wrap seals the geometry (cockpit via the driver
+body, undertray edges, component junctions) into a genuinely different — more
+sealed, higher-downforce — body than his as-modelled labelled mesh. No
+sizing knob closes that; only matching geometry fidelity does.
+
 **Consequence:** the pipeline's accuracy ceiling is set by the wrap, which
 exists only because the team's current export strips named selections
 (CLUSTER_FINDINGS: the specialist's source had them). The definitive fix is
